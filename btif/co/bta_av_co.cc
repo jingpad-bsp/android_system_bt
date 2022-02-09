@@ -44,6 +44,33 @@
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
 
+#if (defined(SPRD_FEATURE_A2DPOFFLOAD) && SPRD_FEATURE_A2DPOFFLOAD == TRUE)
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <sys/inotify.h>
+#include <cutils/sockets.h>
+#include <sys/un.h>
+#include <sys/poll.h>
+#include <sys/eventfd.h>
+#include <sys/epoll.h>
+#include "a2dp_sbc_constants.h"
+#include "sbc_encoder.h"
+#include "a2dp_sbc_encoder.h"
+
+
+/* Define the bitrate step when trying to match bitpool value */
+#define A2DP_SBC_BITRATE_STEP 5
+
+//static int offload_Param_fd = INVALID_FD;
+//static int epoll_fd = INVALID_FD;
+uint8_t vendor_codec_config[AVDT_CODEC_SIZE] = {0};
+//static int offload_server_flag = 0;
+
+#endif
+
 // Macro to retrieve the number of elements in a statically allocated array
 #define BTA_AV_CO_NUM_ELEMENTS(__a) (sizeof(__a) / sizeof((__a)[0]))
 
@@ -1042,7 +1069,11 @@ tA2DP_STATUS BtaAvCo::ProcessSinkGetConfig(tBTA_AV_HNDL bta_av_handle,
   p_peer->num_rx_sources++;
 
   // Check the peer's Source codec
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  if (A2DP_IsPeerSourceCodecValid_Ex(p_codec_info, peer_address)) {
+#else
   if (A2DP_IsPeerSourceCodecValid(p_codec_info)) {
+#endif
     // If there is room for a new one
     if (p_peer->num_sup_sources < BTA_AV_CO_NUM_ELEMENTS(p_peer->sources)) {
       BtaAvCoSep* p_source = &p_peer->sources[p_peer->num_sup_sources++];
@@ -1411,6 +1442,7 @@ bool BtaAvCo::SetActivePeer(const RawAddress& peer_address) {
   memcpy(codec_config_, active_peer_->codec_config, AVDT_CODEC_SIZE);
   APPL_TRACE_DEBUG("%s: codec = %s", __func__,
                    A2DP_CodecInfoString(codec_config_).c_str());
+  //quan offload
   ReportSourceCodecState(active_peer_);
   return true;
 }
@@ -1630,6 +1662,277 @@ bool BtaAvCo::ReportSourceCodecState(BtaAvCoPeer* p_peer) {
   APPL_TRACE_DEBUG("%s: peer %s codec_config=%s", __func__,
                    p_peer->addr.ToString().c_str(),
                    codec_config.ToString().c_str());
+
+
+#if (defined(SPRD_FEATURE_A2DPOFFLOAD) && SPRD_FEATURE_A2DPOFFLOAD == TRUE)
+  if(codec_config.codec_type == BTAV_A2DP_CODEC_INDEX_SOURCE_SBC){
+    vendor_codec_config[0] = p_peer->codec_config[3] & A2DP_SBC_IE_CH_MD_MSK;
+    vendor_codec_config[1] = p_peer->codec_config[4] & A2DP_SBC_IE_BLOCKS_MSK;
+    vendor_codec_config[2]  = p_peer->codec_config[4] & A2DP_SBC_IE_SUBBAND_MSK;
+    vendor_codec_config[3]  = p_peer->codec_config[3] & A2DP_SBC_IE_SAMP_FREQ_MSK;
+    vendor_codec_config[4] = p_peer->codec_config[4] & A2DP_SBC_IE_ALLOC_MD_MSK;
+	
+    vendor_codec_config[5] = p_peer->codec_config[6]; // use max bit pool
+    vendor_codec_config[6] = p_peer->codec_config[6];
+  }
+
+
+  APPL_TRACE_WARNING(
+		   "offload before update %s: ChannelMode=%d, NumOfSubBands=%d, NumOfBlocks=%d, "
+		   "AllocationMethod=%d, SamplingFreq=%d ,min_BitPool=%d, max_BitPool=%d",
+		   __func__, vendor_codec_config[0],
+		   vendor_codec_config[2],
+		   vendor_codec_config[1],
+		   vendor_codec_config[4], 
+		   vendor_codec_config[3], vendor_codec_config[5],vendor_codec_config[6]);
+
+
+ //bitpool reconfig for br or edr etc
+  {
+	//SBC_ENC_PARAMS* p_encoder_params = &a2dp_sbc_encoder_cb.sbc_encoder_params;
+	//uint8_t codec_info[AVDT_CODEC_SIZE];
+	uint16_t s16SamplingFreq;
+	int16_t s16BitPool = 0;
+	int16_t s16BitRate;
+	int16_t s16FrameLen;
+	uint8_t protect = 0;
+	int min_bitpool;
+	int max_bitpool;
+
+
+	int16_t temp_s16SamplingFreq = vendor_codec_config[3];  /* 16k, 32k, 44.1k or 48k*/
+	int16_t temp_s16ChannelMode = vendor_codec_config[0];   /* mono, dual, streo or joint streo*/
+	int16_t temp_s16NumOfSubBands = vendor_codec_config[2]; /* 4 or 8 */
+	int16_t temp_s16NumOfChannels = 0;
+	int16_t temp_s16NumOfBlocks = vendor_codec_config[1]; 	 /* 4, 8, 12 or 16*/
+	int16_t temp_s16AllocationMethod = vendor_codec_config[4]; /* loudness or SNR*/
+	int16_t temp_s16BitPool; 		 /* 16*numOfSb for mono & dual;*/
+	                                 //	32*numOfSb for stereo & joint stereo 
+	int16_t temp_u16BitRate = 0;   								 
+#ifndef A2DP_SBC_NON_EDR_MAX_RATE
+// from a2dp_sbc_encoder.cc
+/* High quality quality setting @ 44.1 khz */
+#define A2DP_SBC_DEFAULT_BITRATE 328
+#define A2DP_SBC_NON_EDR_MAX_RATE 229
+#endif
+
+	if(btif_av_is_peer_edr(p_peer->addr)) {
+		APPL_TRACE_WARNING("%s: peer support edr",__func__);
+		temp_u16BitRate = A2DP_SBC_DEFAULT_BITRATE;
+	} else {
+		APPL_TRACE_WARNING("%s: peer not support edr",__func__);
+		temp_u16BitRate = A2DP_SBC_NON_EDR_MAX_RATE;
+	}
+
+	min_bitpool = p_peer->codec_config[5];
+	max_bitpool = p_peer->codec_config[6];
+
+
+	switch (temp_s16SamplingFreq) {
+	  case A2DP_SBC_IE_SAMP_FREQ_16:
+		temp_s16SamplingFreq = SBC_sf16000;
+	    break;
+	  case A2DP_SBC_IE_SAMP_FREQ_32:
+		temp_s16SamplingFreq = SBC_sf32000;
+		break;
+	  case A2DP_SBC_IE_SAMP_FREQ_44:
+		temp_s16SamplingFreq = SBC_sf44100;
+		break;
+	  case A2DP_SBC_IE_SAMP_FREQ_48:
+		temp_s16SamplingFreq = SBC_sf48000;
+		break;
+	  default:
+		break;
+	}
+	
+	if (temp_s16SamplingFreq == SBC_sf16000)
+	  s16SamplingFreq = 16000;
+	else if (temp_s16SamplingFreq == SBC_sf32000)
+	  s16SamplingFreq = 32000;
+	else if (temp_s16SamplingFreq == SBC_sf44100)
+	  s16SamplingFreq = 44100;
+	else
+	  s16SamplingFreq = 48000;
+
+
+	switch (temp_s16ChannelMode) {
+	  case A2DP_SBC_IE_CH_MD_MONO:
+		temp_s16ChannelMode = SBC_MONO;
+	    break;
+	  case A2DP_SBC_IE_CH_MD_DUAL:
+		temp_s16ChannelMode = SBC_DUAL;
+		break;
+	  case A2DP_SBC_IE_CH_MD_STEREO:
+		temp_s16ChannelMode = SBC_STEREO;
+		break;
+	  case A2DP_SBC_IE_CH_MD_JOINT:
+		temp_s16ChannelMode = SBC_JOINT_STEREO;
+		break;
+	  default:
+		break;
+	}
+
+	switch (temp_s16NumOfSubBands) {
+	  case A2DP_SBC_IE_SUBBAND_4:
+		temp_s16NumOfSubBands = 4;
+	    break;
+	  case A2DP_SBC_IE_SUBBAND_8:
+		temp_s16NumOfSubBands = 8;
+		break;
+	  default:
+		break;
+	}
+
+	switch (temp_s16AllocationMethod) {
+	  case A2DP_SBC_IE_ALLOC_MD_S:
+		temp_s16AllocationMethod = SBC_SNR;
+	    break;
+	  case A2DP_SBC_IE_ALLOC_MD_L:
+		temp_s16AllocationMethod = SBC_LOUDNESS;
+		break;
+	  default:
+		break;
+	}
+
+	switch (vendor_codec_config[0]) {
+	  case A2DP_SBC_IE_CH_MD_MONO:
+		temp_s16NumOfChannels = 1;
+	    break;
+	  case A2DP_SBC_IE_CH_MD_DUAL:
+	  case A2DP_SBC_IE_CH_MD_STEREO:
+	  case A2DP_SBC_IE_CH_MD_JOINT:
+		temp_s16NumOfChannels = 2;
+	    break;
+	  default:
+		break;
+	}
+
+    switch (temp_s16NumOfBlocks) {
+    case A2DP_SBC_IE_BLOCKS_4:
+      temp_s16NumOfBlocks = 4;
+	  break;
+    case A2DP_SBC_IE_BLOCKS_8:
+      temp_s16NumOfBlocks = 8;
+	  break;
+    case A2DP_SBC_IE_BLOCKS_12:
+      temp_s16NumOfBlocks = 12;
+	  break;
+    case A2DP_SBC_IE_BLOCKS_16:
+      temp_s16NumOfBlocks = 16;
+	  break;
+    default:
+      break;
+    }
+
+	 APPL_TRACE_WARNING(
+			  "update %s: ChannelMode=%d, NumOfSubBands=%d, NumOfBlocks=%d, "
+			  "AllocationMethod=%d, BitRate=%d, SamplingFreq=%d BitPool=%d",
+			  __func__, temp_s16ChannelMode,
+			  temp_s16NumOfSubBands,
+			  temp_s16NumOfBlocks,
+			  temp_s16AllocationMethod, temp_u16BitRate,
+			  s16SamplingFreq, s16BitPool);
+  
+	do {
+          if (temp_s16NumOfBlocks == 0 ||
+              temp_s16NumOfSubBands == 0 ||
+              temp_s16NumOfChannels == 0) {
+              APPL_TRACE_ERROR("%s - Avoiding division by zero...", __func__);
+              APPL_TRACE_ERROR("%s - block=%d, subBands=%d, channels=%d",
+                               __func__,
+                               temp_s16NumOfBlocks,
+                               temp_s16NumOfSubBands,
+                               temp_s16NumOfSubBands);
+              break;
+          }
+	  if ((temp_s16ChannelMode == SBC_JOINT_STEREO) ||
+		  (temp_s16ChannelMode == SBC_STEREO)) {
+		s16BitPool = (int16_t)((temp_u16BitRate *
+								temp_s16NumOfSubBands * 1000 /
+								s16SamplingFreq) -
+							   ((32 + (4 * temp_s16NumOfSubBands *
+									   temp_s16NumOfChannels) +
+								 ((temp_s16ChannelMode - 2) *
+								  temp_s16NumOfSubBands)) /
+								temp_s16NumOfBlocks));
+  
+		s16FrameLen = 4 +
+					  (4 * temp_s16NumOfSubBands *
+					   temp_s16NumOfChannels) /
+						  8 +
+					  (((temp_s16ChannelMode - 2) *
+						temp_s16NumOfSubBands) +
+					   (temp_s16NumOfBlocks * s16BitPool)) /
+						  8;
+  
+		s16BitRate = (8 * s16FrameLen * s16SamplingFreq) /
+					 (temp_s16NumOfSubBands *
+					  temp_s16NumOfBlocks * 1000);
+  
+		if (s16BitRate > temp_u16BitRate) s16BitPool--;
+  
+		if (temp_s16NumOfSubBands == 8)
+		  s16BitPool = (s16BitPool > 255) ? 255 : s16BitPool;
+		else
+		  s16BitPool = (s16BitPool > 128) ? 128 : s16BitPool;
+	  } else {
+		s16BitPool =
+			(int16_t)(((temp_s16NumOfSubBands *
+						temp_u16BitRate * 1000) /
+					   (s16SamplingFreq * temp_s16NumOfChannels)) -
+					  (((32 / temp_s16NumOfChannels) +
+						(4 * temp_s16NumOfSubBands)) /
+					   temp_s16NumOfBlocks));
+  
+		temp_s16BitPool =
+			(s16BitPool > (16 * temp_s16NumOfSubBands))
+				? (16 * temp_s16NumOfSubBands)
+				: s16BitPool;
+	  }
+  
+	  if (s16BitPool < 0) s16BitPool = 0;
+  
+	  APPL_TRACE_DEBUG("%s: bitpool candidate: %d (%d kbps)", __func__,
+				s16BitPool, temp_u16BitRate);
+  
+	  if (s16BitPool > max_bitpool) {
+		APPL_TRACE_DEBUG("%s: computed bitpool too large (%d)", __func__,
+				  s16BitPool);
+		/* Decrease bitrate */
+		temp_u16BitRate -= A2DP_SBC_BITRATE_STEP;
+		/* Record that we have decreased the bitrate */
+		protect |= 1;
+	  } else if (s16BitPool < min_bitpool) {
+		APPL_TRACE_DEBUG("%s: computed bitpool too small (%d)", __func__,
+				 s16BitPool);
+  
+		/* Increase bitrate */
+		uint16_t previous_u16BitRate = temp_u16BitRate;
+		temp_u16BitRate += A2DP_SBC_BITRATE_STEP;
+		/* Record that we have increased the bitrate */
+		protect |= 2;
+		/* Check over-flow */
+		if (temp_u16BitRate < previous_u16BitRate) protect |= 3;
+	  } else {
+		break;
+	  }
+	  /* In case we have already increased and decreased the bitrate, just stop */
+	  if (protect == 3) {
+		APPL_TRACE_DEBUG("%s: could not find bitpool in range", __func__);
+		break;
+	  }
+	} while (true);
+  
+	/* Finally update the bitpool in the encoder structure */
+
+	vendor_codec_config[5] = s16BitPool;
+    vendor_codec_config[6] = s16BitPool;
+	APPL_TRACE_DEBUG("%s:final bit rate %d, final bit pool %d, vendor_codec_config[6] = %d", __func__,
+			  temp_u16BitRate, s16BitPool, vendor_codec_config[6]);   
+  }
+
+#endif
+
   btif_av_report_source_codec_state(p_peer->addr, codec_config,
                                     codecs_local_capabilities,
                                     codecs_selectable_capabilities);

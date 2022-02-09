@@ -58,6 +58,10 @@ typedef char tBTM_LOC_BD_NAME[BTM_MAX_LOC_BD_NAME_LEN + 1];
   (controller_get_interface()->get_bt_version()->manufacturer == \
    LMP_COMPID_BROADCOM)
 
+#if (defined(SPRD_FEATURE_ACL_PRIORITY) && SPRD_FEATURE_ACL_PRIORITY == TRUE)
+#define BTM_IS_SPRD_CONTROLLER() (controller_get_interface()->get_bt_version()->manufacturer == LMP_COMPID_SPREADTRUM)
+#endif
+
 /* Define the ACL Management control structure
 */
 typedef struct {

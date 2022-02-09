@@ -23,6 +23,7 @@ btifCommonIncludes = [
     "system/bt/embdrv/sbc/decoder/include",
     "system/bt/utils/include",
     "system/bt/include",
+    "system/bt/vnd_unisoc/include",
     "system/libhwbinder/include",
     "system/security/keystore/include",
     "hardware/interfaces/keymaster/4.0/support/include",
@@ -118,6 +119,7 @@ cc_library_static {
         "libaudio-a2dp-hw-utils",
         "lib-bt-packets",
         "libbt-audio-hal-interface",
+        "libbtdevice_unisoc",
     ],
     cflags: [
         "-DBUILDCFG",

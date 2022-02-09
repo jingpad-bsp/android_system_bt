@@ -13,3 +13,11 @@ prebuilt_etc {
     src: "bt_did.conf",
     sub_dir: "bluetooth",
 }
+// Bluetooth bt_stack_beta.conf config file
+// ========================================================
+prebuilt_etc {
+    name: "bt_stack_beta.conf",
+    src: "bt_stack_beta.conf",
+    sub_dir: "bluetooth",
+}
+

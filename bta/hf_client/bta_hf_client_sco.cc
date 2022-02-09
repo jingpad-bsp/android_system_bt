@@ -497,6 +497,25 @@ static void bta_hf_client_sco_event(tBTA_HF_CLIENT_CB* client_cb,
   APPL_TRACE_DEBUG("%s: after state: %d", __func__, client_cb->sco_state);
 }
 
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+/*******************************************************************************
+ *
+ * Function         bta_hf_client_sco_event_ex
+ *
+ * Description      Handle SCO events from external
+ *
+ *
+ * Returns          void
+ *
+ ******************************************************************************/
+void bta_hf_client_sco_event_ex(tBTA_HF_CLIENT_CB* client_cb, uint8_t event) {
+  APPL_TRACE_DEBUG("%s: before state: %d event: %d", __func__,
+                   client_cb->sco_state, event);
+  bta_hf_client_sco_event(client_cb, event);
+  APPL_TRACE_DEBUG("%s: after state: %d", __func__, client_cb->sco_state);
+}
+#endif
+
 /*******************************************************************************
  *
  * Function         bta_hf_client_sco_listen

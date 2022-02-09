@@ -57,6 +57,9 @@
 #include "btif_util.h"
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#include "btm_int.h"
+#endif
 
 /*******************************************************************************
  *  Constants & Macros
@@ -827,6 +830,9 @@ static void btif_hf_client_upstreams_evt(uint16_t event, char* p_param) {
   tBTA_HF_CLIENT* p_data = (tBTA_HF_CLIENT*)p_param;
 
   btif_hf_client_cb_t* cb = btif_hf_client_get_cb_by_bda(p_data->bd_addr);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  uint16_t disc_reason = 0;
+#endif
   if (cb == NULL && event == BTA_HF_CLIENT_OPEN_EVT) {
     BTIF_TRACE_DEBUG("%s: event BTA_HF_CLIENT_OPEN_EVT allocating block",
                      __func__);
@@ -887,9 +893,16 @@ static void btif_hf_client_upstreams_evt(uint16_t event, char* p_param) {
       break;
 
     case BTA_HF_CLIENT_CLOSE_EVT:
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+      disc_reason = btm_get_acl_disc_reason_code();
+      cb->state = BTHF_CLIENT_CONNECTION_STATE_DISCONNECTED;
+      HAL_CBACK(bt_hf_client_callbacks, connection_state_cb, &cb->peer_bda,
+                cb->state, 0, disc_reason);
+#else
       cb->state = BTHF_CLIENT_CONNECTION_STATE_DISCONNECTED;
       HAL_CBACK(bt_hf_client_callbacks, connection_state_cb, &cb->peer_bda,
                 cb->state, 0, 0);
+#endif
       cb->peer_bda = RawAddress::kAny;
       cb->peer_feat = 0;
       cb->chld_feat = 0;

@@ -92,6 +92,7 @@ cc_library_shared {
     required: [
         "bt_did.conf",
         "bt_stack.conf",
+        "bt_stack_beta.conf",
         "libldacBT_enc",
         "libldacBT_abr",
     ],

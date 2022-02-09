@@ -37,6 +37,10 @@ const char* PTS_SMP_FAILURE_CASE_KEY = "PTS_SmpFailureCase";
 static std::unique_ptr<config_t> config;
 }  // namespace
 
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+static std::unique_ptr<config_t> config_debug;
+#endif
+
 // Module lifecycle functions
 
 static future_t* init() {
@@ -56,6 +60,13 @@ static future_t* init() {
     config = config_new_empty();
   }
 
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+  config_debug = config_new("/etc/bluetooth/bt_stack_beta.conf");
+  if (!config_debug) {
+    LOG_INFO(LOG_TAG, "%s file >%s< not found", __func__, path);
+    config_debug = config_new_empty();
+  }
+#endif
   return future_new_immediate(FUTURE_SUCCESS);
 }
 
@@ -110,10 +121,18 @@ static int get_pts_smp_failure_case(void) {
 
 static config_t* get_all(void) { return config.get(); }
 
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+static config_t* get_debug_config(void) { return config_debug.get(); }
+#endif
+
 const stack_config_t interface = {
     get_trace_config_enabled,     get_pts_avrcp_test,
     get_pts_secure_only_mode,     get_pts_conn_updates_disabled,
     get_pts_crosskey_sdp_disable, get_pts_smp_options,
-    get_pts_smp_failure_case,     get_all};
+    get_pts_smp_failure_case,     get_all,
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+    get_debug_config,
+#endif
+};
 
 const stack_config_t* stack_config_get_interface(void) { return &interface; }

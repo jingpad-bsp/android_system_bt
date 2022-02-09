@@ -50,5 +50,8 @@ interface IBluetoothManager
     int updateBleAppCount(IBinder b, boolean enable, String packageName);
     boolean isBleAppPresent();
     boolean isHearingAidProfileSupported();
+    boolean isBleSupport();
+    int getBluetoothMode();
+    boolean setBluetoothMode(int btMode);
 }
 

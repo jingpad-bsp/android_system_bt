@@ -71,6 +71,9 @@ bool ConnectionHandler::Initialize(const ConnectionCallback& callback,
   instance_->avrc_ = avrcp;
   instance_->sdp_ = sdp;
   instance_->vol_ = vol;
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG(INFO) << "Initialize avrcp instance_ is 0x" << instance_;
+#endif
 
   // Set up the AVRCP acceptor connection
   if (!instance_->AvrcpConnect(false, RawAddress::kAny)) {
@@ -97,6 +100,9 @@ bool ConnectionHandler::CleanUp() {
   delete instance_;
   instance_ = nullptr;
 
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG(INFO) << "CleanUp avrcp instance_ is 0x" << instance_;
+#endif
   return true;
 }
 
@@ -151,6 +157,14 @@ bool ConnectionHandler::DisconnectDevice(const RawAddress& bdaddr) {
 std::vector<std::shared_ptr<Device>> ConnectionHandler::GetListOfDevices()
     const {
   std::vector<std::shared_ptr<Device>> list;
+
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+    LOG(INFO) << __PRETTY_FUNCTION__ << "device_map size: " << device_map_.size();
+
+    if (device_map_.empty()) {
+        LOG(ERROR) << "no vaild  device in device_map_";
+    }
+#endif
   for (const auto& device : device_map_) {
     list.push_back(device.second);
   }
@@ -199,7 +213,15 @@ bool ConnectionHandler::AvrcpConnect(bool initiator, const RawAddress& bdaddr) {
                            : AVRC_CONN_ACP;  // 0 if initiator, 1 if acceptor
   // TODO (apanicke): We shouldn't need RCCT to do absolute volume. The current
   // AVRC_API requires it though.
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  open_cb.control = BTA_AV_FEAT_RCTG | BTA_AV_FEAT_METADATA;
+#else
   open_cb.control = BTA_AV_FEAT_RCTG | BTA_AV_FEAT_RCCT | BTA_AV_FEAT_METADATA;
+#endif
+#else
+  open_cb.control = BTA_AV_FEAT_RCTG | BTA_AV_FEAT_RCCT | BTA_AV_FEAT_METADATA;
+#endif
 
   uint8_t handle = 0;
   uint16_t status = avrc_->Open(&handle, &open_cb, bdaddr);
@@ -407,7 +429,7 @@ void ConnectionHandler::MessageCb(uint8_t handle, uint8_t label, uint8_t opcode,
   device_map_[handle]->MessageReceived(label, Packet::Parse(pkt));
 }
 
-void ConnectionHandler::SdpCb(const RawAddress& bdaddr, SdpCallback cb,
+void ConnectionHandler::SdpCb(RawAddress bdaddr, SdpCallback cb,
                               tSDP_DISCOVERY_DB* disc_db, uint16_t status) {
   LOG(INFO) << __PRETTY_FUNCTION__ << ": SDP lookup callback received";
 

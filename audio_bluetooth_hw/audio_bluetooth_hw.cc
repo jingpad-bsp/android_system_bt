@@ -28,15 +28,62 @@
 #include "stream_apis.h"
 #include "utils.h"
 
+#ifdef SPRD_FEATURE_AOBFIX
+extern struct audio_stream_out* stream_ptr;
+using ::android::bluetooth::audio::utils::ParseAudioParams;
+using ::android::bluetooth::audio::utils::GetAudioParamString;
+
+static int adev_sprd_set_parameters(struct audio_hw_device* dev,
+                               const char* kvpairs) {
+  LOG(INFO) << __func__;
+  if (!stream_ptr) {
+    LOG(INFO) << __func__ << ": stream_ptr is NULL, return.";
+    return -1;
+  }
+  auto* out = reinterpret_cast<BluetoothStreamOut*>(stream_ptr);
+  std::unique_lock<std::mutex> lock(out->mutex_);
+
+  LOG(INFO) << __func__ << ": state=" << out->bluetooth_output_.GetState()
+               << ", kvpairs=[" << kvpairs << "]";
+
+  std::unordered_map<std::string, std::string> params =
+      ParseAudioParams(kvpairs);
+  if (params.empty()) return -1;
+
+  LOG(INFO) << __func__ << ": ParamsMap=[" << GetAudioParamString(params)
+               << "]";
+
+  if (params.find("A2dpSuspended") != params.end()) {
+    if (params["A2dpSuspended"] == "true") {
+      LOG(INFO) << __func__ << ": state=" << out->bluetooth_output_.GetState()
+                << " stream param stopped";
+      if (out->bluetooth_output_.GetState() != BluetoothStreamState::DISABLED) {
+        out->frames_rendered_ = 0;
+        out->bluetooth_output_.Stop();
+      }
+    } else {
+      LOG(INFO) << __func__ << ": state=" << out->bluetooth_output_.GetState()
+                << " stream param standby";
+      if (out->bluetooth_output_.GetState() == BluetoothStreamState::DISABLED) {
+        out->bluetooth_output_.SetState(BluetoothStreamState::STANDBY);
+      }
+    }
+  }
+  LOG(INFO) << __func__ << ": state=" << out->bluetooth_output_.GetState()
+               << ", kvpairs=[" << kvpairs << "]";
+  return 0;
+}
+#else
 static int adev_set_parameters(struct audio_hw_device* dev,
                                const char* kvpairs) {
-  LOG(VERBOSE) << __func__ << ": kevpairs=[" << kvpairs << "]";
+  LOG(INFO) << __func__ << ": kevpairs=[" << kvpairs << "]";
   return -ENOSYS;
 }
+#endif
 
 static char* adev_get_parameters(const struct audio_hw_device* dev,
                                  const char* keys) {
-  LOG(VERBOSE) << __func__ << ": keys=[" << keys << "]";
+  LOG(INFO) << __func__ << ": keys=[" << keys << "]";
   return strdup("");
 }
 
@@ -82,13 +129,16 @@ static int adev_get_mic_mute(const struct audio_hw_device* dev, bool* state) {
 static int adev_dump(const audio_hw_device_t* device, int fd) { return 0; }
 
 static int adev_close(hw_device_t* device) {
+#ifdef SPRD_FEATURE_AOBFIX  
+  LOG(INFO) << __func__ << "close " ;
+#endif
   free(device);
   return 0;
 }
 
 static int adev_open(const hw_module_t* module, const char* name,
                      hw_device_t** device) {
-  LOG(VERBOSE) << __func__ << ": name=[" << name << "]";
+  LOG(INFO) << __func__ << ": name=[" << name << "]";
   if (strcmp(name, AUDIO_HARDWARE_INTERFACE) != 0) return -EINVAL;
 
   struct audio_hw_device* adev =
@@ -107,7 +157,11 @@ static int adev_open(const hw_module_t* module, const char* name,
   adev->set_mode = adev_set_mode;
   adev->set_mic_mute = adev_set_mic_mute;
   adev->get_mic_mute = adev_get_mic_mute;
+#ifdef SPRD_FEATURE_AOBFIX
+  adev->set_parameters = adev_sprd_set_parameters;
+#else
   adev->set_parameters = adev_set_parameters;
+#endif
   adev->get_parameters = adev_get_parameters;
   adev->get_input_buffer_size = adev_get_input_buffer_size;
   adev->open_output_stream = adev_open_output_stream;

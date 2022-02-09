@@ -132,6 +132,7 @@ void btif_a2dp_on_suspended(tBTA_AV_SUSPEND* p_av_suspend) {
   }
   if (bluetooth::audio::a2dp::is_hal_2_0_enabled() ||
       !btif_av_is_a2dp_offload_enabled()) {
+
     btif_a2dp_source_on_suspended(p_av_suspend);
   } else if (p_av_suspend != NULL) {
     btif_a2dp_audio_on_suspended(p_av_suspend->status);

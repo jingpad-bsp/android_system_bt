@@ -123,8 +123,14 @@ static void btif_a2dp_recv_ctrl_data(void) {
       if (btif_a2dp_source_is_streaming()) {
         APPL_TRACE_WARNING("%s: A2DP command %s while source is streaming",
                            __func__, audio_a2dp_hw_dump_ctrl_event(cmd));
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+        //btif_a2dp_command_ack(A2DP_CTRL_ACK_FAILURE);
+        //break;
+        btif_a2dp_source_audio_tx_stop_event();
+#else
         btif_a2dp_command_ack(A2DP_CTRL_ACK_FAILURE);
         break;
+#endif
       }
 
       if (btif_av_stream_ready()) {

@@ -409,7 +409,14 @@ void rfc_mx_sm_state_wait_sabme(tRFC_MCB* p_mcb, uint16_t event, void* p_data) {
 
         p_mcb->state = RFC_MX_STATE_CONNECTED;
         p_mcb->peer_ready = true;
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+        // remove for avoid the conflict which HFP connect from app and RFCOMM
+        // connect request from remote devices. and this situation will cause
+        // HFP profile connect fail and stack crash.
+        RFCOMM_TRACE_EVENT("%s: received SABM, wait PN, do not send", __func__);
+#else
         PORT_StartCnf(p_mcb, RFCOMM_SUCCESS);
+#endif
       }
       return;
 

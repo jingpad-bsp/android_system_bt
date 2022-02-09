@@ -26,6 +26,10 @@
 #include "bluetooth/uuid.h"
 #include "raw_address.h"
 
+#ifdef HAS_BDROID_BUILDCFG
+#include "bdroid_buildcfg.h"
+#endif
+
 /**
  * The Bluetooth Hardware Module ID
  */
@@ -124,6 +128,14 @@ typedef enum {
   BT_ACL_STATE_CONNECTED,
   BT_ACL_STATE_DISCONNECTED
 } bt_acl_state_t;
+
+/** Bluetooth sprd profiles which need special handling */
+typedef enum {
+  BT_SPRD_OPP_SEND = 1,
+  BT_SPRD_OPP_RECEIVE,
+  BT_SPRD_A2DP_SOURCE,
+  BT_SPRD_A2DP_SINK
+} bt_sprd_profile_t;
 
 /** Bluetooth SDP service record */
 typedef struct {
@@ -470,9 +482,10 @@ typedef struct {
    * restricted mode, bonds that are created are marked as restricted in the
    * config file. These devices are deleted upon leaving restricted mode.
    * The |is_single_user_mode| flag inits the adapter in NIAP mode.
+   * The |is_atv| flag indicates whether the local device is an Android TV
    */
   int (*init)(bt_callbacks_t* callbacks, bool guest_mode,
-              bool is_single_user_mode);
+              bool is_single_user_mode, bool is_atv);
 
   /** Enable Bluetooth. */
   int (*enable)();
@@ -625,6 +638,13 @@ typedef struct {
    * @return a string of uint8_t that is unique to this MAC address
    */
   std::string (*obfuscate_address)(const RawAddress& address);
+  /**
+   * notify bt controller opp and a2dp start/stop state
+   * @param address pointer, profile_id(vendor-specific), enable/disable
+   * @return BT_STATUS
+   */
+  int (*sprd_set_profile_state)(const RawAddress* bd_addr,
+                                bt_sprd_profile_t profile, bool state);
 } bt_interface_t;
 
 #define BLUETOOTH_INTERFACE_STRING "bluetoothInterface"

@@ -34,6 +34,9 @@
 #endif
 
 #include "bt_types.h" /* This must be defined AFTER buildcfg.h */
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#include "vnd_unisoc/include/btdevice_target.h"
+#endif
 
 //------------------Added from bdroid_buildcfg.h---------------------
 #ifndef L2CAP_EXTFEA_SUPPORTED_MASK

@@ -31,6 +31,9 @@
 #include "bta_sys.h"
 #include "osi/include/list.h"
 #include "stack/include/a2dp_api.h"
+#ifdef HAS_BDROID_BUILDCFG
+#include "bdroid_buildcfg.h"
+#endif
 
 /*****************************************************************************
  *  Constants
@@ -514,6 +517,11 @@ struct tBTA_AV_SCB final {
   uint16_t uuid_int; /*intended UUID of Initiator to connect to */
   bool offload_start_pending;
   bool offload_started;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  uint8_t tsep; /*AVDT_TSEP_SRC: current is source, AVDT_TSEP_SNK: current is sink*/
+#endif
+#endif
 
   /**
    * Called to setup the state when connected to a peer.
@@ -591,6 +599,11 @@ typedef struct {
   tBTA_AV_SCB* p_scb[BTA_AV_NUM_STRS];   /* stream control block */
   tSDP_DISCOVERY_DB* p_disc_db;          /* pointer to discovery database */
   tBTA_AV_CBACK* p_cback;                /* application callback function */
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  tBTA_AV_CBACK* p_sink_cback;           /* sink application callback function */
+#endif
+#endif
   tBTA_AV_RCB rcb[BTA_AV_NUM_RCB];       /* RCB control block */
   tBTA_AV_LCB lcb[BTA_AV_NUM_LINKS + 1]; /* link control block */
   alarm_t* link_signalling_timer;

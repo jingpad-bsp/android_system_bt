@@ -276,6 +276,13 @@ static const char BTE_LOGMSG_MODULE[] = "bte_logmsg_module";
     if (l2cb.l2cap_trace_level >= BT_TRACE_LEVEL_DEBUG)             \
       BT_TRACE(TRACE_LAYER_L2CAP, TRACE_TYPE_DEBUG, ##__VA_ARGS__); \
   }
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+#define L2CAP_TRACE_VERBOSE(...)                                    \
+  {                                                                 \
+    if (l2cb.l2cap_trace_level >= BT_TRACE_LEVEL_VERBOSE)           \
+      BT_TRACE(TRACE_LAYER_L2CAP, TRACE_TYPE_DEBUG, ##__VA_ARGS__); \
+  }
+#endif
 
 /* Define tracing for the SDP unit */
 #define SDP_TRACE_ERROR(...)                                      \

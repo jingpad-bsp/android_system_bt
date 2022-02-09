@@ -51,7 +51,18 @@
 #include "osi/include/reactor.h"
 #include "packet_fragmenter.h"
 
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+#include "btsnoop_sprd.h"
+static const btsnoop_sprd_t* btsnoop_sprd;
+#endif
+
 #define BT_HCI_TIMEOUT_TAG_NUM 1010000
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+#define SPIC_SYSFS_DUMPMEM_NODE "/sys/devices/platform/wcn_bt/dumpmem"
+#define SDIO_SYSFS_DUMPMEM_NODE "/sys/devices/platform/sprd-mtty/dumpmem"
+#define BUILD_TYPE_PROP_KEY "ro.build.type"
+#define USER_DEBUG_VERSION_STR "userdebug"
+#endif
 
 using bluetooth::common::MessageLoopThread;
 
@@ -77,11 +88,17 @@ typedef struct {
 // Using a define here, because it can be stringified for the property lookup
 // Default timeout should be less than BLE_START_TIMEOUT and
 // having less than 3 sec would hold the wakelock for init
+
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+#define DEFAULT_STARTUP_TIMEOUT_MS 4900
+#else
 #define DEFAULT_STARTUP_TIMEOUT_MS 2900
+#endif
+
 #define STRING_VALUE_OF(x) #x
 
 // Abort if there is no response to an HCI command.
-static const uint32_t COMMAND_PENDING_TIMEOUT_MS = 2000;
+static const uint32_t COMMAND_PENDING_TIMEOUT_MS = 5000;
 static const uint32_t COMMAND_PENDING_MUTEX_ACQUIRE_TIMEOUT_MS = 500;
 static const uint32_t COMMAND_TIMEOUT_RESTART_MS = 5000;
 static const int HCI_UNKNOWN_COMMAND_TIMED_OUT = 0x00ffffff;
@@ -144,7 +161,9 @@ void initialization_complete() {
 
 void hci_event_received(const base::Location& from_here, BT_HDR* packet) {
   btsnoop->capture(packet, true);
-
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+	btsnoop_sprd->capture(packet, true);
+#endif
   if (!filter_incoming_event(packet)) {
     send_data_upwards.Run(from_here, packet);
   }
@@ -152,11 +171,17 @@ void hci_event_received(const base::Location& from_here, BT_HDR* packet) {
 
 void acl_event_received(BT_HDR* packet) {
   btsnoop->capture(packet, true);
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+	btsnoop_sprd->capture(packet, true);
+#endif
   packet_fragmenter->reassemble_and_dispatch(packet);
 }
 
 void sco_data_received(BT_HDR* packet) {
   btsnoop->capture(packet, true);
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+	btsnoop_sprd->capture(packet, true);
+#endif
   packet_fragmenter->reassemble_and_dispatch(packet);
 }
 
@@ -408,7 +433,9 @@ static void event_packet_ready(void* pkt) {
 // Callback for the fragmenter to send a fragment
 static void transmit_fragment(BT_HDR* packet, bool send_transmit_finished) {
   btsnoop->capture(packet, false);
-
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+	btsnoop_sprd->capture(packet, false);
+#endif
   // HCI command packets are freed on a different thread when the matching
   // event is received. Check packet->event before sending to avoid a race.
   bool free_after_transmit =
@@ -483,6 +510,39 @@ static void command_timed_out(void* original_wait_entry) {
   LOG_ERROR(LOG_TAG, "%s", __func__);
   std::unique_lock<std::recursive_timed_mutex> lock(
       commands_pending_response_mutex, std::defer_lock);
+
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  char value[PROPERTY_VALUE_MAX] = {'\0'};
+  osi_property_get(BUILD_TYPE_PROP_KEY, value, "");
+  LOG_DEBUG(LOG_TAG, "%s current build: %s", __func__, value);
+  if (strstr(value, USER_DEBUG_VERSION_STR)) {
+    int fd = -1, ret;
+    char value = 1;
+    //write to sipc node
+    fd = open(SPIC_SYSFS_DUMPMEM_NODE, O_WRONLY);
+    if (fd < 0) {
+      LOG_ERROR(LOG_TAG, "open %s faild, error=%s (%d)", SPIC_SYSFS_DUMPMEM_NODE, strerror(errno), errno);
+    } else {
+      ret = write(fd, &value, 1);
+      if (ret < 0) {
+        LOG_ERROR(LOG_TAG, "write %s faild, error=%s (%d)", SPIC_SYSFS_DUMPMEM_NODE, strerror(errno), errno);
+      }
+      close(fd);
+    }
+    //write to sdio node
+    fd = open(SDIO_SYSFS_DUMPMEM_NODE, O_WRONLY);
+    if (fd < 0) {
+      LOG_ERROR(LOG_TAG, "open %s faild, error=%s (%d)", SDIO_SYSFS_DUMPMEM_NODE, strerror(errno), errno);
+    } else {
+      ret = write(fd, &value, 1);
+      if (ret < 0) {
+        LOG_ERROR(LOG_TAG, "write %s faild, error=%s (%d)", SDIO_SYSFS_DUMPMEM_NODE, strerror(errno), errno);
+      }
+      close(fd);
+    }
+  }
+#endif
+
   if (!lock.try_lock_for(std::chrono::milliseconds(
           COMMAND_PENDING_MUTEX_ACQUIRE_TIMEOUT_MS))) {
     LOG_ERROR(LOG_TAG, "%s: Cannot obtain the mutex", __func__);
@@ -723,6 +783,9 @@ void hci_layer_cleanup_interface() {
 const hci_t* hci_layer_get_interface() {
   buffer_allocator = buffer_allocator_get_interface();
   btsnoop = btsnoop_get_interface();
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+  btsnoop_sprd = btsnoop_sprd_get_interface();
+#endif
   packet_fragmenter = packet_fragmenter_get_interface();
 
   init_layer_interface();

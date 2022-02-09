@@ -127,6 +127,9 @@ static void bta_hf_client_mgmt_cback(uint32_t code, uint16_t port_handle) {
     } else {
       APPL_TRACE_ERROR("%s: PORT_SUCCESS, ignoring handle = %d", __func__,
                        port_handle);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+      osi_free(p_buf);
+#endif
       return;
     }
   } else if (client_cb != NULL &&
@@ -136,6 +139,12 @@ static void bta_hf_client_mgmt_cback(uint32_t code, uint16_t port_handle) {
 
     RFCOMM_RemoveServer(port_handle);
     p_buf->hdr.event = BTA_HF_CLIENT_RFC_CLOSE_EVT;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  } else if (client_cb == NULL) {
+    // client_cb is already cleaned due to hfp client disabled.
+    // Assigned a valid event value to header and send this message anyway.
+    p_buf->hdr.event = BTA_HF_CLIENT_RFC_CLOSE_EVT;
+#endif
   }
 
   p_buf->hdr.layer_specific = client_cb != NULL ? client_cb->handle : 0;

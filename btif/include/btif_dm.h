@@ -28,6 +28,9 @@
  ******************************************************************************/
 void btif_dm_init(uid_set_t* set);
 void btif_dm_cleanup(void);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+bool btif_dm_read_in_bonding_state(const RawAddress& bd_addr);
+#endif
 
 /**
  * BTIF callback to switch context from bte to btif
@@ -100,9 +103,9 @@ void btif_dm_load_ble_local_keys(void);
 void btif_dm_get_ble_local_keys(tBTA_DM_BLE_LOCAL_KEY_MASK* p_key_mask,
                                 Octet16* p_er,
                                 tBTA_BLE_LOCAL_ID_KEYS* p_id_keys);
-void btif_dm_save_ble_bonding_keys(void);
+void btif_dm_save_ble_bonding_keys(RawAddress& bd_addr);
 void btif_dm_remove_ble_bonding_keys(void);
-void btif_dm_ble_sec_req_evt(tBTA_DM_BLE_SEC_REQ* p_ble_req);
+void btif_dm_ble_sec_req_evt(tBTA_DM_BLE_SEC_REQ* p_ble_req, bool is_consent);
 
 void btif_dm_update_ble_remote_properties(const RawAddress& bd_addr,
                                           BD_NAME bd_name,

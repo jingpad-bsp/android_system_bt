@@ -67,32 +67,77 @@ static void init_stack() {
   // state modification only happens there. Using the thread to perform
   // all stack operations ensures that the operations are done serially
   // and do not overlap.
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s new semaphore", __func__);
+#endif
   semaphore_t* semaphore = semaphore_new(0);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s push task", __func__);
+#endif
   management_thread.DoInThread(FROM_HERE,
                                base::Bind(event_init_stack, semaphore));
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s wait semaphore", __func__);
+#endif
   semaphore_wait(semaphore);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s free semaphore", __func__);
+#endif
   semaphore_free(semaphore);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s end", __func__);
+#endif
 }
 
 static void start_up_stack_async() {
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s push task", __func__);
+#endif
   management_thread.DoInThread(FROM_HERE,
                                base::Bind(event_start_up_stack, nullptr));
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s end", __func__);
+#endif
 }
 
 static void shut_down_stack_async() {
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s push task", __func__);
+#endif
   management_thread.DoInThread(FROM_HERE,
                                base::Bind(event_shut_down_stack, nullptr));
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s end", __func__);
+#endif
 }
 
 static void clean_up_stack() {
   // This is a synchronous process. Post it to the thread though, so
   // state modification only happens there.
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s new semaphore", __func__);
+#endif
   semaphore_t* semaphore = semaphore_new(0);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s push task", __func__);
+#endif
   management_thread.DoInThread(FROM_HERE,
                                base::Bind(event_clean_up_stack, semaphore));
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s wait semaphore", __func__);
+#endif
   semaphore_wait(semaphore);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s free semaphore", __func__);
+#endif
   semaphore_free(semaphore);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s thread shutdown", __func__);
+#endif
   management_thread.ShutDown();
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s end", __func__);
+#endif
 }
 
 static bool get_stack_is_running() { return stack_is_running; }
@@ -177,8 +222,13 @@ static void event_shut_down_stack(UNUSED_ATTR void* context) {
 
   btif_disable_bluetooth();
   module_shut_down(get_module(BTIF_CONFIG_MODULE));
-
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s wait local_hack_future", __func__);
+#endif
   future_await(local_hack_future);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s wait local_hack_future finish", __func__);
+#endif
   module_shut_down(get_module(CONTROLLER_MODULE));  // Doesn't do any work, just
                                                     // puts it in a restartable
                                                     // state

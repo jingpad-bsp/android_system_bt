@@ -73,6 +73,10 @@ typedef uint8_t tBTA_AV_STATUS;
 #define BTA_AV_FEAT_ACP_START \
   0x0800 /* start stream when 2nd SNK was accepted   */
 #define BTA_AV_FEAT_APP_SETTING 0x2000 /* Player app setting support */
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#define BTA_AV_FEAT_SINK_APP \
+  0x4000 /* just as a a2dp sink role */
+#endif
 
 /* Internal features */
 #define BTA_AV_FEAT_NO_SCO_SSPD \

@@ -50,6 +50,9 @@
 #include "osi/include/list.h"
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#include "btdevice.h"
+#endif
 
 #define RC_INVALID_TRACK_ID (0xFFFFFFFFFFFFFFFFULL)
 
@@ -1675,7 +1678,11 @@ static void btif_rc_upstreams_rsp_evt(uint16_t event,
 
   switch (event) {
     case AVRC_PDU_REGISTER_NOTIFICATION: {
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+      if (AVRC_RSP_CHANGED == ctype &&  pavrc_resp->reg_notif.event_id == AVRC_EVT_VOLUME_CHANGE)
+#else
       if (AVRC_RSP_CHANGED == ctype)
+#endif
         p_dev->rc_volume = pavrc_resp->reg_notif.param.volume;
       HAL_CBACK(bt_rc_callbacks, volume_change_cb,
                 pavrc_resp->reg_notif.param.volume, ctype, p_dev->rc_addr);
@@ -2632,7 +2639,12 @@ static void handle_rc_metamsg_rsp(tBTA_AV_META_MSG* pmeta_msg,
       (AVRC_RSP_CHANGED == pmeta_msg->code ||
        AVRC_RSP_INTERIM == pmeta_msg->code ||
        AVRC_RSP_ACCEPT == pmeta_msg->code || AVRC_RSP_REJ == pmeta_msg->code ||
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+       AVRC_RSP_NOT_IMPL == pmeta_msg->code ||
+       AVRC_RSP_IMPL_STBL==pmeta_msg->code)) {
+#else
        AVRC_RSP_NOT_IMPL == pmeta_msg->code)) {
+#endif
     status = AVRC_ParsResponse(pmeta_msg->p_msg, &avrc_response, scratch_buf,
                                sizeof(scratch_buf));
     BTIF_TRACE_DEBUG(
@@ -2737,7 +2749,11 @@ bool iterate_supported_event_list_for_timeout(void* data, void* cb_data) {
   btif_rc_device_cb_t* p_dev = btif_rc_get_device_by_bda(cntxt->rc_addr);
   btif_rc_supported_event_t* p_event = (btif_rc_supported_event_t*)data;
 
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  if (p_event->label == label && p_dev->rc_supported_event_list != NULL) {
+#else
   if (p_event->label == label) {
+#endif
     list_remove(p_dev->rc_supported_event_list, p_event);
     return false;
   }
@@ -2758,6 +2774,12 @@ static void rc_notification_interim_timout(uint8_t label,
                                            btif_rc_device_cb_t* p_dev) {
   list_node_t* node;
   rc_context_t cntxt;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  if (p_dev == NULL || p_dev->rc_supported_event_list == NULL) {
+    BTIF_TRACE_ERROR("%s rc_supported_event_list null\n", __func__);
+    return;
+  }
+#endif
   memset(&cntxt, 0, sizeof(rc_context_t));
   cntxt.label = label;
   cntxt.rc_addr = p_dev->rc_addr;
@@ -3197,7 +3219,27 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg,
                          p_rsp->event_id);
         return;
     }
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+    if (p_dev->rc_supported_event_list != NULL) {
+      list_foreach(p_dev->rc_supported_event_list,
+                   iterate_supported_event_list_for_interim_rsp,
+                   &p_rsp->event_id);
 
+      node = list_begin(p_dev->rc_supported_event_list);
+
+      while (node != NULL) {
+        p_event = (btif_rc_supported_event_t*)list_node(node);
+        if ((p_event != NULL) && (p_event->status == eNOT_REGISTERED)) {
+          register_for_event_notification(p_event, p_dev);
+          break;
+        }
+        node = list_next(node);
+        p_event = NULL;
+      }
+    } else {
+      p_event = NULL;
+    }
+#else
     list_foreach(p_dev->rc_supported_event_list,
                  iterate_supported_event_list_for_interim_rsp,
                  &p_rsp->event_id);
@@ -3213,6 +3255,7 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg,
       node = list_next(node);
       p_event = NULL;
     }
+#endif
     /* Registered for all events, we can request application settings */
     if (p_event == NULL && !p_dev->rc_app_settings.query_started) {
       /* we need to do this only if remote TG supports
@@ -3234,7 +3277,14 @@ static void handle_notification_response(tBTA_AV_META_MSG* pmeta_msg,
     BTIF_TRACE_DEBUG("%s: Notification completed: 0x%2X ", __func__,
                      p_rsp->event_id);
 
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+    if (p_dev->rc_supported_event_list != NULL)
+      node = list_begin(p_dev->rc_supported_event_list);
+    else
+      node = NULL;
+#else
     node = list_begin(p_dev->rc_supported_event_list);
+#endif
 
     while (node != NULL) {
       p_event = (btif_rc_supported_event_t*)list_node(node);

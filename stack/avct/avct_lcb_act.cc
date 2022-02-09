@@ -31,6 +31,9 @@
 #include "bt_utils.h"
 #include "btm_api.h"
 #include "osi/include/osi.h"
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#include "vnd_unisoc/include/btdevice.h"
+#endif
 
 /* packet header length lookup table */
 const uint8_t avct_lcb_pkt_type_len[] = {AVCT_HDR_LEN_SINGLE,
@@ -228,8 +231,14 @@ void avct_lcb_open_ind(tAVCT_LCB* p_lcb, tAVCT_LCB_EVT* p_data) {
                                &p_lcb->peer_addr);
       }
       /* if unbound acceptor and lcb doesn't already have a ccb for this PID */
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+      else if ((p_ccb->p_lcb == NULL) && (p_ccb->cc.role == AVCT_ACP) &&
+               (avct_lcb_has_pid(p_lcb, p_ccb->cc.pid) == NULL) &&
+               btdevice_ccb_control_correct(p_ccb->cc.control)) {
+#else
       else if ((p_ccb->p_lcb == NULL) && (p_ccb->cc.role == AVCT_ACP) &&
                (avct_lcb_has_pid(p_lcb, p_ccb->cc.pid) == NULL)) {
+#endif
         /* bind ccb to lcb and send connect ind event */
         bind = true;
         p_ccb->p_lcb = p_lcb;

@@ -45,6 +45,10 @@
 #include "osi/include/log.h"
 #include "osi/include/osi.h"
 
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+#include "btif_api.h"
+#endif
+
 #define BTIF_HH_APP_ID_MI 0x01
 #define BTIF_HH_APP_ID_KB 0x02
 
@@ -1291,6 +1295,12 @@ static bt_status_t disconnect(RawAddress* bd_addr) {
 static bt_status_t virtual_unplug(RawAddress* bd_addr) {
   CHECK_BTHH_INIT();
   BTIF_TRACE_EVENT("BTHH: %s", __func__);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  if (btif_dm_get_connection_state(bd_addr)) {
+    BTIF_TRACE_EVENT("%s: connected, workaround for some devices", __func__);
+    return BT_STATUS_FAIL;
+  }
+#endif
   btif_hh_device_t* p_dev;
   if (btif_hh_cb.status == BTIF_HH_DISABLED) {
     BTIF_TRACE_ERROR("%s: Error, HH status = %d", __func__, btif_hh_cb.status);

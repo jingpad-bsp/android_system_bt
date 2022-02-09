@@ -19,6 +19,10 @@
 #ifndef HCIDEFS_H
 #define HCIDEFS_H
 
+#ifdef HAS_BDROID_BUILDCFG
+#include "bdroid_buildcfg.h"
+#endif
+
 #define HCI_PROTO_VERSION 0x01     /* Version for BT spec 1.1          */
 #define HCI_PROTO_VERSION_1_2 0x02 /* Version for BT spec 1.2          */
 #define HCI_PROTO_VERSION_2_0 0x03 /* Version for BT spec 2.0          */
@@ -1242,6 +1246,12 @@ typedef struct {
 #define HCI_BRCM_ACL_PRIORITY_HIGH 0xFF
 #define HCI_BRCM_SET_ACL_PRIORITY (0x0057 | HCI_GRP_VENDOR_SPECIFIC)
 
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+/* Parameter information for HCI_SPRD_SET_PROFILE_STATE */
+#define HCI_SPRD_SET_PROFILE_STATE_SIZE 9
+#define HCI_SPRD_SET_PROFILE_STATE (0x0059 | HCI_GRP_VENDOR_SPECIFIC)
+#endif
+
 /* Define values for LMP Test Control parameters
  * Test Scenario, Hopping Mode, Power Control Mode
 */
@@ -1322,6 +1332,8 @@ typedef struct {
 #define HCI_EXT_FEATURES_PAGE_MAX 3  // Parse feature pages 0-3
 
 #define HCI_FEATURE_BYTES_PER_PAGE 8
+
+#define HCI_EXT_FEATURES_SUCCESS_EVT_LEN 13
 
 #define HCI_FEATURES_KNOWN(x) \
   (((x)[0] | (x)[1] | (x)[2] | (x)[3] | (x)[4] | (x)[5] | (x)[6] | (x)[7]) != 0)

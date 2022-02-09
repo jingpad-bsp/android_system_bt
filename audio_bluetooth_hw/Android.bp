@@ -15,7 +15,7 @@ cc_library_shared {
         "android.hardware.bluetooth.audio@2.0",
         "libaudioutils",
         "libbase",
-        "libbluetooth_audio_session",
+        "libbluetooth_audio_session_unisoc",
         "libcutils",
         "libfmq",
         "libhidlbase",
@@ -27,6 +27,8 @@ cc_library_shared {
         "-Wall",
         "-Werror",
         "-Wno-unused-parameter",
+        "-DSPRD_FEATURE_A2DPOFFLOAD",
+        "-DSPRD_FEATURE_AOBFIX"
     ],
 }
 

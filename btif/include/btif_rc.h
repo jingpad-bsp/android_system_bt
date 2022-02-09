@@ -26,5 +26,9 @@ uint8_t btif_rc_get_connected_peer_handle(const RawAddress& peer_addr);
 void btif_rc_check_handle_pending_play(const RawAddress& peer_addr,
                                        bool bSendToApp);
 bool btif_rc_is_connected_peer(const RawAddress& peer_addr);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+int get_transaction_lbl();
+int get_rc_handlers(uint8_t *handle_arr);
+#endif
 
 #endif  // BTIF_RC_H

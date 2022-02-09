@@ -40,6 +40,7 @@
 #include "l2c_api.h"
 #include "l2c_int.h"
 #include "l2cdefs.h"
+#include "log/log.h"
 #include "osi/include/osi.h"
 
 static bool l2c_link_send_to_lower(tL2C_LCB* p_lcb, BT_HDR* p_buf,
@@ -123,6 +124,16 @@ bool l2c_link_hci_conn_req(const RawAddress& bd_addr) {
   } else if (p_lcb->link_state == LST_DISCONNECTING) {
     /* In disconnecting state, reject the connection. */
     btsnd_hcic_reject_conn(bd_addr, HCI_ERR_HOST_REJECT_DEVICE);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  } else if (p_lcb->link_state == LST_CONNECTING_WAIT_SWITCH) {
+    L2CAP_TRACE_WARNING("%s: will connect it later,reject it",
+                        __func__);
+    L2CAP_TRACE_WARNING(
+        "L2CAP got conn_req while connected (state:%d). Reject it",
+        p_lcb->link_state);
+    /* Reject the connection with ACL Connection disallow reason */
+    btsnd_hcic_reject_conn(bd_addr, HCI_ERR_COMMAND_DISALLOWED);
+#endif
   } else {
     L2CAP_TRACE_ERROR(
         "L2CAP got conn_req while connected (state:%d). Reject it",
@@ -397,6 +408,15 @@ bool l2c_link_hci_disc_comp(uint16_t handle, uint8_t reason) {
        race condition where layer above issued connect request on link that was
        disconnecting
      */
+
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+    if (p_lcb->ccb_queue.p_first_ccb != NULL) {
+        L2CAP_TRACE_DEBUG("%s: p_lcb->ccb_queue.p_first_ccb != NULL",__func__);
+    } else {
+        L2CAP_TRACE_DEBUG("%s: p_lcb->p_pending_ccb", __func__);
+    }
+#endif
+
     if (p_lcb->ccb_queue.p_first_ccb != NULL || p_lcb->p_pending_ccb) {
       L2CAP_TRACE_DEBUG(
           "l2c_link_hci_disc_comp: Restarting pending ACL request");
@@ -447,6 +467,9 @@ bool l2c_link_hci_disc_comp(uint16_t handle, uint8_t reason) {
         if (l2cu_create_conn_le(p_lcb))
           lcb_is_free = false; /* still using this lcb */
       } else {
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+        L2CAP_TRACE_DEBUG("%s: link_state = %d", __func__, p_lcb->link_state);
+#endif
         if (l2cu_create_conn_br_edr(p_lcb))
           lcb_is_free = false; /* still using this lcb */
       }
@@ -462,6 +485,9 @@ bool l2c_link_hci_disc_comp(uint16_t handle, uint8_t reason) {
   if (lcb_is_free &&
       ((p_lcb = l2cu_find_lcb_by_state(LST_CONNECT_HOLDING)) != NULL)) {
     /* we found one-- create a connection */
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+    L2CAP_TRACE_DEBUG("%s: lcbs are pending, execute l2cu_create_conn_br_edr ", __func__);
+#endif
     l2cu_create_conn_br_edr(p_lcb);
   }
 
@@ -1210,13 +1236,22 @@ static bool l2c_link_send_to_lower(tL2C_LCB* p_lcb, BT_HDR* p_buf,
  * Returns          void
  *
  ******************************************************************************/
-void l2c_link_process_num_completed_pkts(uint8_t* p) {
+void l2c_link_process_num_completed_pkts(uint8_t* p, uint8_t evt_len) {
   uint8_t num_handles, xx;
   uint16_t handle;
   uint16_t num_sent;
   tL2C_LCB* p_lcb;
 
-  STREAM_TO_UINT8(num_handles, p);
+  if (evt_len > 0) {
+    STREAM_TO_UINT8(num_handles, p);
+  } else {
+    num_handles = 0;
+  }
+
+  if (num_handles > evt_len / (2 * sizeof(uint16_t))) {
+    android_errorWriteLog(0x534e4554, "141617601");
+    num_handles = evt_len / (2 * sizeof(uint16_t));
+  }
 
   for (xx = 0; xx < num_handles; xx++) {
     STREAM_TO_UINT16(handle, p);

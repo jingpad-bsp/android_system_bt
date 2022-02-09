@@ -110,6 +110,9 @@ static const interop_addr_entry_t interop_addr_database[] = {
     // Swage Rokitboost HS - unacceptably loud volume
     {{{0x00, 0x14, 0xf1, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
 
+    //BOW S8100S
+    {{{0xfc, 0x58, 0xfa, 0,0,0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
+
     // VW Car Kit - not enough granularity with volume
     {{{0x00, 0x26, 0x7e, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
     {{{0x90, 0x03, 0xb7, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
@@ -141,8 +144,74 @@ static const interop_addr_entry_t interop_addr_database[] = {
     // deepblue2 - cannot change smoothly the volume: b/37834035
     {{{0x0c, 0xa6, 0x94, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
 
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+    // Aigo A10
+    {{{0x20, 0x9a, 0x10, 0,0,0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
+
+    //WOOWI SNAIL PLUS
+    {{{0x00, 0x18, 0x91, 0,0,0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
+
+    //TransnBox-headset
+    {{{0xe9, 0x08, 0xef, 0,0,0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
+
+    //JVC Car Kits -  unacceptably loud volume
+    {{{0x00, 0x1d, 0x86, 0,0,0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
+
+    //Prius
+    {{{0x00, 0x02, 0xc7, 0,0,0}}, 3, INTEROP_DISABLE_AUTO_PAIRING},
+    {{{0x00, 0x09, 0x93, 0,0,0}}, 3, INTEROP_DISABLE_AUTO_PAIRING},
+
+    //devices for only CVSD
+    {{{0x90, 0x03, 0xb7, 0,0,0}}, 3, INTEROP_CVSD_ONLY},
+
+    //FreeBuds 2 Pro
+    {{{0xf4, 0x63, 0x1f, 0,0,0}}, 3, INTEROP_CVSD_ONLY},
+
+    //Gigaset_L800HXC2F8BB
+    {{{0xd8, 0xf7, 0x10, 0, 0, 0}}, 3, INTEROP_2MBPS_LINK_ONLY},
+
     // AirPods 2 - unacceptably loud volume
     {{{0x94, 0x16, 0x25, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
+
+    // QCY-Q8
+    {{{0x1c, 0x52, 0x16, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
+
+    // LG HBS920
+    {{{0xb8, 0xf8, 0xbe, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
+
+    // Edifier TWS3
+    {{{0x00, 0x23, 0x02, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
+
+    //KUWO_K3_D3F8
+    {{{0x78, 0xa7, 0xeb, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
+
+    //KUWO_K3_F177
+    {{{0x0c, 0x73, 0xeb, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
+
+    //FiiO M5
+    {{{0x40, 0xed, 0x98, 0, 0, 0}}, 3, INTEROP_DISABLE_ABSOLUTE_VOLUME},
+
+    // Range Rover
+    {{{0xac, 0x7a, 0x4d, 0, 0, 0}}, 3, INTEROP_ARVCP_REJ_DEALY},
+
+    // LG N5
+    {{{0xcc, 0xfa, 0x00, 0, 0, 0}}, 3, INTEROP_SLC_STATE_CHLD_SEND},
+
+    // pixel2
+    {{{0x40, 0x4e, 0x36, 0, 0, 0}}, 3, INTEROP_SLC_STATE_CHLD_SEND},
+
+    // leshi X500
+    {{{0x84, 0x73, 0x03, 0, 0, 0}}, 3, INTEROP_SLC_STATE_CHLD_SEND},
+
+    // Vivo y70s
+    {{{0x64, 0x2c, 0x0f, 0, 0, 0}}, 3, INTEROP_SLC_STATE_CHLD_SEND},
+
+    // Che2-TL00
+    //{{{0xe0, 0x19, 0x1d, 0, 0, 0}}, 3, INTEROP_HF_CLIENT_AT_CMD},
+
+    // leshi X500
+    {{{0x84, 0x73, 0x03, 0, 0, 0}}, 3, INTEROP_DISABLE_AAC_CODEC_SUPPORT},
+#endif
 };
 
 typedef struct {

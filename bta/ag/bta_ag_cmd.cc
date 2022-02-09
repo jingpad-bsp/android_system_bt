@@ -35,6 +35,9 @@
 #include "osi/include/osi.h"
 #include "port_api.h"
 #include "utl.h"
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+#include "device/include/interop.h"
+#endif
 
 /*****************************************************************************
  *  Constants
@@ -1094,8 +1097,17 @@ void bta_ag_at_hfp_cback(tBTA_AG_SCB* p_scb, uint16_t cmd, uint8_t arg_type,
       break;
 
     case BTA_AG_LOCAL_EVT_BRSF: {
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+      if ((interop_match_addr(INTEROP_CVSD_ONLY, &(p_scb->peer_addr)) == true)) {
+        p_scb->peer_features = ((uint16_t)int_arg) & 0xFF7F;
+        APPL_TRACE_DEBUG("Received AT+BSRF, special device, only support CVSD!");
+      } else {
+        p_scb->peer_features = (uint16_t)int_arg;
+      }
+#else
       /* store peer features */
       p_scb->peer_features = (uint16_t)int_arg;
+#endif
 
       tBTA_AG_FEAT features = p_scb->features;
       if (p_scb->peer_version < HFP_VERSION_1_7) {

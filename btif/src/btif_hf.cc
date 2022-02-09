@@ -319,6 +319,16 @@ static void btif_hf_upstreams_evt(uint16_t event, char* p_param) {
     case BTA_AG_OPEN_EVT:
       // Check if an outoging connection is pending
       if (btif_hf_cb[idx].is_initiator) {
+        BTIF_TRACE_DEBUG("%s: btif_hf_cb.state %d", __func__, btif_hf_cb[idx].state);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+        if ((btif_hf_cb[idx].connected_bda == p_data->open.bd_addr) &&
+            (btif_hf_cb[idx].state == BTHF_CONNECTION_STATE_SLC_CONNECTED
+          || btif_hf_cb[idx].state == BTHF_CONNECTION_STATE_CONNECTED)) {
+          BTIF_TRACE_DEBUG("%s: device: %s has connected,no need report",
+                           __func__, p_data->open.bd_addr.ToString().c_str());
+          break;
+        }
+#endif
         CHECK_EQ(btif_hf_cb[idx].state, BTHF_CONNECTION_STATE_CONNECTING)
             << "Control block must be in connecting state when initiating";
         CHECK(!btif_hf_cb[idx].connected_bda.IsEmpty())

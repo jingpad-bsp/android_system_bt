@@ -22,6 +22,10 @@
 #include "btif/include/btif_a2dp_source.h"
 #include "stack/include/a2dp_codec_api.h"
 
+#if (defined(SPRD_FEATURE_A2DPOFFLOAD) && SPRD_FEATURE_A2DPOFFLOAD == TRUE)
+extern uint8_t vendor_codec_config[AVDT_CODEC_SIZE];
+#endif
+
 // Sets the active peer to |peer_addr|.
 // Returns true on success, otherwise false.
 bool bta_av_co_set_active_peer(const RawAddress& peer_addr);

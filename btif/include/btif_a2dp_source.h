@@ -61,6 +61,12 @@ bool btif_a2dp_source_end_session(const RawAddress& peer_address);
 // This function should be called by the BTIF state machine to stop streaming.
 void btif_a2dp_source_shutdown(void);
 
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+// stop a2dp audio
+//
+void btif_a2dp_source_audio_tx_stop_event(void);
+#endif
+
 // Cleanup the A2DP Source module.
 // This function should be called by the BTIF state machine during graceful
 // cleanup.

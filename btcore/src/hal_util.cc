@@ -27,6 +27,10 @@
 #include "btcore/include/hal_util.h"
 #include "osi/include/log.h"
 
+#ifdef HAS_BDROID_BUILDCFG
+#include "bdroid_buildcfg.h"
+#endif
+
 using base::StringPrintf;
 
 #define BLUETOOTH_LIBRARY_NAME "libbluetooth.so"

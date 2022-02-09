@@ -1028,6 +1028,21 @@ static bool bta_dm_pm_is_sco_active() {
   return bScoActive;
 }
 
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+/*******************************************************************************
+ *
+ * Function         bta_dm_get_sco_active_state
+ *
+ * Description      Loop through connected services and return sco active state
+ *
+ * Returns          bool. true if SCO active, else false
+ *
+ ******************************************************************************/
+bool bta_dm_get_sco_active_state(void) {
+  return bta_dm_pm_is_sco_active();
+}
+#endif
+
 #if (BTM_SSR_INCLUDED == TRUE)
 /*******************************************************************************
  *

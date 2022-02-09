@@ -55,6 +55,9 @@
 #include "osi/include/osi.h"
 #include "stack_config.h"
 
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+#include "btsnoop_sprd.h"
+#endif
 /*******************************************************************************
  *  Constants & Macros
  ******************************************************************************/
@@ -156,6 +159,9 @@ void bte_main_enable() {
   APPL_TRACE_DEBUG("%s", __func__);
 
   module_start_up(get_module(BTSNOOP_MODULE));
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+  module_start_up(get_module(BTSNOOP_SPRD_MODULE));
+#endif
   module_start_up(get_module(HCI_MODULE));
 
   BTU_StartUp();
@@ -176,6 +182,9 @@ void bte_main_disable(void) {
 
   module_shut_down(get_module(HCI_MODULE));
   module_shut_down(get_module(BTSNOOP_MODULE));
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+  module_shut_down(get_module(BTSNOOP_SPRD_MODULE));
+#endif
 
   BTU_ShutDown();
 }

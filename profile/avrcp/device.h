@@ -16,8 +16,15 @@
 
 #pragma once
 
+#ifdef HAS_BDROID_BUILDCFG
+#include "bdroid_buildcfg.h"
+#endif
 #include <iostream>
 #include <memory>
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+#include <mutex>
+#include <queue>
+#endif
 #include <stack>
 
 #include <base/bind.h>
@@ -33,6 +40,9 @@
 #include "packet/avrcp/get_folder_items.h"
 #include "packet/avrcp/get_item_attributes.h"
 #include "packet/avrcp/get_total_number_of_items.h"
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+#include "packet/avrcp/pass_through_packet.h"
+#endif
 #include "packet/avrcp/play_item.h"
 #include "packet/avrcp/register_notification_packet.h"
 #include "packet/avrcp/set_addressed_player.h"
@@ -326,6 +336,11 @@ class Device {
 
   // Labels used for messages currently in flight.
   std::set<uint8_t> active_labels_;
+
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  std::queue<std::shared_ptr<PassThroughPacket>> pending_key_events_;
+  std::mutex pending_key_event_mutex_;
+#endif
 
   int8_t volume_ = -1;
   DISALLOW_COPY_AND_ASSIGN(Device);

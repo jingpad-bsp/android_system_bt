@@ -464,6 +464,9 @@ static void bta_dm_sys_hw_cback(tBTA_SYS_HW_EVT status) {
 void bta_dm_disable() {
   /* Set l2cap idle timeout to 0 (so BTE immediately disconnects ACL link after
    * last channel is closed) */
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  APPL_TRACE_DEBUG("%s enter bta_dm_disable",__func__);
+#endif
   L2CA_SetIdleTimeoutByBdAddr(RawAddress::kAny, 0, BT_TRANSPORT_BR_EDR);
   L2CA_SetIdleTimeoutByBdAddr(RawAddress::kAny, 0, BT_TRANSPORT_LE);
 
@@ -487,15 +490,24 @@ void bta_dm_disable() {
      */
     APPL_TRACE_WARNING("%s BTA_DISABLE_DELAY set to %d ms", __func__,
                        BTA_DISABLE_DELAY);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+    APPL_TRACE_DEBUG("%s before bta_dm_disable_conn_down_timer_cback",__func__);
+#endif
     alarm_set_on_mloop(bta_dm_cb.disable_timer, BTA_DISABLE_DELAY,
                        bta_dm_disable_conn_down_timer_cback, NULL);
 #else
     bta_dm_disable_conn_down_timer_cback(NULL);
 #endif
   } else {
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+    APPL_TRACE_DEBUG("%s before bta_dm_disable_timer_cback",__func__);
+#endif
     alarm_set_on_mloop(bta_dm_cb.disable_timer, BTA_DM_DISABLE_TIMER_MS,
                        bta_dm_disable_timer_cback, UINT_TO_PTR(0));
   }
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  APPL_TRACE_DEBUG("%s bta_dm_disable finish",__func__);
+#endif
 }
 
 /*******************************************************************************
@@ -535,10 +547,17 @@ static void bta_dm_disable_timer_cback(void* data) {
                          bta_dm_disable_timer_cback, UINT_TO_PTR(1));
     }
   } else {
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+    //bta_dm_cb.disabling = false;
+
+    bta_sys_remove_uuid(UUID_SERVCLASS_PNP_INFORMATION);
+    bta_dm_disable_conn_down_timer_cback(NULL);
+#else
     bta_dm_cb.disabling = false;
 
     bta_sys_remove_uuid(UUID_SERVCLASS_PNP_INFORMATION);
     bta_dm_cb.p_sec_cback(BTA_DM_DISABLE_EVT, NULL);
+#endif
   }
 }
 
@@ -1926,7 +1945,19 @@ static void bta_dm_discover_device(const RawAddress& remote_bd_addr) {
     if (dev_type == BT_DEVICE_TYPE_BLE || addr_type == BLE_ADDR_RANDOM)
       transport = BT_TRANSPORT_LE;
   } else {
-    transport = bta_dm_search_cb.transport;
+    #if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+      tBT_DEVICE_TYPE temp_dev_type;
+      tBLE_ADDR_TYPE temp_addr_type;
+      BTM_ReadDevInfo(remote_bd_addr, &temp_dev_type, &temp_addr_type);
+      APPL_TRACE_DEBUG("%s get dev_type is %d", __func__, temp_dev_type);
+      if (temp_dev_type == BT_DEVICE_TYPE_BLE) {
+        transport = BT_TRANSPORT_LE;
+      } else {
+        transport = BT_TRANSPORT_BR_EDR;
+      }
+    #else
+        transport = bta_dm_search_cb.transport;
+    #endif
   }
 
   /* Reset transport state for next discovery */
@@ -2956,6 +2987,9 @@ static bool bta_dm_check_av(uint16_t event) {
  *
  ******************************************************************************/
 static void bta_dm_disable_conn_down_timer_cback(UNUSED_ATTR void* data) {
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  APPL_TRACE_DEBUG("%s enter bta_dm_disable_conn_down_timer_cback",__func__);
+#endif
   tBTA_SYS_HW_MSG* sys_enable_event =
       (tBTA_SYS_HW_MSG*)osi_malloc(sizeof(tBTA_SYS_HW_MSG));
 
@@ -2968,9 +3002,18 @@ static void bta_dm_disable_conn_down_timer_cback(UNUSED_ATTR void* data) {
   /* send a message to BTA SYS */
   sys_enable_event->hdr.event = BTA_SYS_API_DISABLE_EVT;
   sys_enable_event->hw_module = BTA_SYS_HW_BLUETOOTH;
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  APPL_TRACE_DEBUG("%s before send msg:BTA_SYS_API_DISABLE_EVT",__func__);
+#endif
   bta_sys_sendmsg(sys_enable_event);
 
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  APPL_TRACE_DEBUG("%s after send msg:BTA_SYS_API_DISABLE_EVT",__func__);
+#endif
   bta_dm_cb.disabling = false;
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  APPL_TRACE_DEBUG("%s bta_dm_disable_conn_down_timer_cback finish",__func__);
+#endif
 }
 
 /*******************************************************************************
@@ -3795,6 +3838,16 @@ static uint8_t bta_dm_ble_smp_cback(tBTM_LE_EVT event, const RawAddress& bda,
       APPL_TRACE_EVENT("io mitm: %d oob_data:%d", p_data->io_req.auth_req,
                        p_data->io_req.oob_data);
 
+      break;
+
+    case BTM_LE_CONSENT_REQ_EVT:
+      sec_event.ble_req.bd_addr = bda;
+      p_name = BTM_SecReadDevName(bda);
+      if (p_name != NULL)
+        strlcpy((char*)sec_event.ble_req.bd_name, p_name, BD_NAME_LEN);
+      else
+        sec_event.ble_req.bd_name[0] = 0;
+      bta_dm_cb.p_sec_cback(BTA_DM_BLE_CONSENT_REQ_EVT, &sec_event);
       break;
 
     case BTM_LE_SEC_REQUEST_EVT:

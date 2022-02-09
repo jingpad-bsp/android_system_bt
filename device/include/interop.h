@@ -22,6 +22,9 @@
 
 #include "raw_address.h"
 
+#ifdef HAS_BDROID_BUILDCFG
+#include "bdroid_buildcfg.h"
+#endif
 static const char INTEROP_MODULE[] = "interop_module";
 
 // NOTE:
@@ -94,6 +97,24 @@ typedef enum {
   // Set a very low initial sniff subrating for HID devices that do not
   // set their own sniff interval.
   INTEROP_HID_HOST_LIMIT_SNIFF_INTERVAL,
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  // Disable mSBC for special devices.
+  INTEROP_CVSD_ONLY,
+
+  // delay send avrcp reject.
+  INTEROP_ARVCP_REJ_DEALY,
+
+  // some phone send sco connect request before CHLD OK.
+  // this will cause hfp no voice for sco connect fail.
+  INTEROP_SLC_STATE_CHLD_SEND,
+
+  // some phone will not response special at command.
+  // this will cause at command long time no ack.
+  INTEROP_HF_CLIENT_AT_CMD,
+
+  // some phone not support AAC very well, need not save aac codec.
+  INTEROP_DISABLE_AAC_CODEC_SUPPORT,
+#endif
 } interop_feature_t;
 
 // Check if a given |addr| matches a known interoperability workaround as

@@ -72,6 +72,12 @@
 #include "osi/include/wakelock.h"
 #include "stack/gatt/connection_manager.h"
 #include "stack_manager.h"
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+#include "btm_api.h"
+#endif
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#include "btdevice.h"
+#endif
 
 using bluetooth::hearing_aid::HearingAidInterface;
 
@@ -82,6 +88,7 @@ using bluetooth::hearing_aid::HearingAidInterface;
 bt_callbacks_t* bt_hal_cbacks = NULL;
 bool restricted_mode = false;
 bool single_user_mode = false;
+bool is_local_device_atv = false;
 
 /*******************************************************************************
  *  Externs
@@ -134,7 +141,7 @@ static bool is_profile(const char* p1, const char* p2) {
  ****************************************************************************/
 
 static int init(bt_callbacks_t* callbacks, bool start_restricted,
-                bool is_single_user_mode) {
+                bool is_single_user_mode, bool is_atv) {
   LOG_INFO(LOG_TAG, "%s: start restricted = %d ; single user = %d", __func__,
            start_restricted, is_single_user_mode);
 
@@ -143,33 +150,72 @@ static int init(bt_callbacks_t* callbacks, bool start_restricted,
 #ifdef BLUEDROID_DEBUG
   allocation_tracker_init();
 #endif
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  btdevice_set_current_tsep(AVDT_TSEP_INVALID);
+#endif
 
   bt_hal_cbacks = callbacks;
   restricted_mode = start_restricted;
   single_user_mode = is_single_user_mode;
+  is_local_device_atv = is_atv;
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s: stack push init to main thread.", __func__);
+#endif
   stack_manager_get_interface()->init_stack();
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s: return.", __func__);
+#endif
   btif_debug_init();
   return BT_STATUS_SUCCESS;
 }
 
 static int enable() {
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s: stack enable called.", __func__);
+#endif
   if (!interface_ready()) return BT_STATUS_NOT_READY;
 
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s: stack push enable to main thread.", __func__);
+#endif
   stack_manager_get_interface()->start_up_stack_async();
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s: return.", __func__);
+#endif
   return BT_STATUS_SUCCESS;
 }
 
 static int disable(void) {
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s: stack disable called.", __func__);
+#endif
   if (!interface_ready()) return BT_STATUS_NOT_READY;
 
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s: stack push disable to main thread.", __func__);
+#endif
   stack_manager_get_interface()->shut_down_stack_async();
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s: return.", __func__);
+#endif
   return BT_STATUS_SUCCESS;
 }
 
-static void cleanup(void) { stack_manager_get_interface()->clean_up_stack(); }
+static void cleanup(void) {
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s: stack cleanup called and push it to main thread.",
+           __func__);
+#endif
+  stack_manager_get_interface()->clean_up_stack();
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  LOG_INFO(LOG_TAG, "%s: return.", __func__);
+#endif
+}
 
 bool is_restricted_mode() { return restricted_mode; }
 bool is_single_user_mode() { return single_user_mode; }
+
+bool is_atv_device() { return is_local_device_atv; }
 
 static int get_adapter_properties(void) {
   /* sanity check */
@@ -448,6 +494,31 @@ static std::string obfuscate_address(const RawAddress& address) {
       address);
 }
 
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+static int sprd_set_profile_state(const RawAddress* bd_addr,
+                                  bt_sprd_profile_t profile, bool state) {
+  /* sanity check */
+  if (!interface_ready()) return BT_STATUS_NOT_READY;
+  LOG_INFO(LOG_TAG, "%s: set addr %s profile: %d state: %d", __func__,
+                    bd_addr->ToString().c_str(), profile, state);
+  uint8_t command[HCI_SPRD_SET_PROFILE_STATE_SIZE];
+  uint8_t* command_ptr = &command[6];
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  uint8_t* pp = (uint8_t *)command;
+ // memcpy(command, bd_addr->address, 6);
+  BDADDR_TO_STREAM(pp, (const RawAddress&)*bd_addr);
+#else
+  memcpy(command, bd_addr->address, 6);
+#endif
+  UINT16_TO_STREAM(command_ptr, profile);
+  UINT8_TO_STREAM(command_ptr, state);
+  BTM_VendorSpecificCommand(HCI_SPRD_SET_PROFILE_STATE,
+                            HCI_SPRD_SET_PROFILE_STATE_SIZE, command,
+                            NULL);
+  return BT_STATUS_SUCCESS;
+}
+#endif
+
 EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
     sizeof(bluetoothInterface),
     init,
@@ -484,4 +555,9 @@ EXPORT_SYMBOL bt_interface_t bluetoothInterface = {
     interop_database_add,
     get_avrcp_service,
     obfuscate_address,
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+    sprd_set_profile_state,
+#else
+    nullptr,
+#endif
 };

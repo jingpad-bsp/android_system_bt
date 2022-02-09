@@ -28,6 +28,11 @@
 #include "stream_apis.h"
 #include "utils.h"
 
+#ifdef SPRD_FEATURE_A2DPOFFLOAD
+using ::android::hardware::bluetooth::audio::V2_0::SbcParameters;
+SbcParameters OffLoadSbcParameters;
+#endif
+
 namespace android {
 namespace bluetooth {
 namespace audio {
@@ -39,6 +44,13 @@ using ::android::hardware::bluetooth::audio::V2_0::ChannelMode;
 using ::android::hardware::bluetooth::audio::V2_0::PcmParameters;
 using ::android::hardware::bluetooth::audio::V2_0::SampleRate;
 using ::android::hardware::bluetooth::audio::V2_0::SessionType;
+
+#ifdef SPRD_FEATURE_A2DPOFFLOAD
+//using ::android::hardware::bluetooth::audio::V2_0::SbcParameters;
+using ::android::hardware::bluetooth::audio::V2_0::CodecConfiguration;
+//SbcParameters OffLoadSbcParameters;
+#endif
+
 using BluetoothAudioStatus =
     ::android::hardware::bluetooth::audio::V2_0::Status;
 using ControlResultCallback = std::function<void(
@@ -148,9 +160,17 @@ bool BluetoothAudioPortOut::init_session_type(audio_devices_t device) {
     case AUDIO_DEVICE_OUT_BLUETOOTH_A2DP:
     case AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES:
     case AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER:
-      LOG(VERBOSE) << __func__ << ": device=AUDIO_DEVICE_OUT_BLUETOOTH_A2DP (HEADPHONES/SPEAKER) ("
-                   << StringPrintf("%#x", device) << ")";
-      session_type_ = SessionType::A2DP_SOFTWARE_ENCODING_DATAPATH;
+		
+#ifdef SPRD_FEATURE_A2DPOFFLOAD
+    LOG(INFO) << __func__ << "a2dp_offload_enabled_sprd_for_hal="<<a2dp_offload_enabled_sprd_for_hal;
+	if(a2dp_offload_enabled_sprd_for_hal)
+	 //wrong shoud be A2DP_HARDWARE_OFFLOAD_DATAPATH
+     session_type_ = SessionType::A2DP_HARDWARE_OFFLOAD_DATAPATH;
+	else
+	 session_type_ = SessionType::A2DP_SOFTWARE_ENCODING_DATAPATH;	
+#else
+     session_type_ = SessionType::A2DP_SOFTWARE_ENCODING_DATAPATH;
+#endif
       break;
     case AUDIO_DEVICE_OUT_HEARING_AID:
       LOG(VERBOSE) << __func__ << ": device=AUDIO_DEVICE_OUT_HEARING_AID (MEDIA/VOICE) (" << StringPrintf("%#x", device)
@@ -262,26 +282,78 @@ bool BluetoothAudioPortOut::LoadAudioConfig(audio_config_t* audio_cfg) const {
 
   const AudioConfiguration& hal_audio_cfg =
       BluetoothAudioSessionControl::GetAudioConfig(session_type_);
-  if (hal_audio_cfg.getDiscriminator() !=
-      AudioConfiguration::hidl_discriminator::pcmConfig) {
-    audio_cfg->sample_rate = kBluetoothDefaultSampleRate;
-    audio_cfg->channel_mask = kBluetoothDefaultOutputChannelModeMask;
-    audio_cfg->format = kBluetoothDefaultAudioFormatBitsPerSample;
-    return false;
+  //quan should fix offload mode
+#ifdef SPRD_FEATURE_A2DPOFFLOAD
+  if(session_type_ == SessionType::A2DP_SOFTWARE_ENCODING_DATAPATH){
+#endif
+	  if (hal_audio_cfg.getDiscriminator() !=
+	      AudioConfiguration::hidl_discriminator::pcmConfig) {
+	    audio_cfg->sample_rate = kBluetoothDefaultSampleRate;
+	    audio_cfg->channel_mask = kBluetoothDefaultOutputChannelModeMask;
+	    audio_cfg->format = kBluetoothDefaultAudioFormatBitsPerSample;
+		//LOG(ERROR) << __func__ << " session_type_ == A2DP_SOFTWARE_ENCODING_DATAPATH ,but hal_audio_cfg.getDiscriminator() != AudioConfiguration::hidl_discriminator::pcmConfig";
+	    return false;
+	  }
+
+	  const PcmParameters& pcm_cfg = hal_audio_cfg.pcmConfig();
+	  LOG(INFO) << __func__ << ": session_type=" << toString(session_type_)
+				   << ", cookie=" << StringPrintf("%#hx", cookie_) << ", state=" << state_ << ", PcmConfig=["
+				   << toString(pcm_cfg) << "]";
+	  if (pcm_cfg.sampleRate == SampleRate::RATE_UNKNOWN ||
+		  pcm_cfg.channelMode == ChannelMode::UNKNOWN ||
+		  pcm_cfg.bitsPerSample == BitsPerSample::BITS_UNKNOWN) {
+		return false;
+	  }
+	  audio_cfg->sample_rate = SampleRateToAudioFormat(pcm_cfg.sampleRate);
+	  audio_cfg->channel_mask =
+		  (is_stereo_to_mono_ ? AUDIO_CHANNEL_OUT_STEREO : ChannelModeToAudioFormat(pcm_cfg.channelMode));
+	  audio_cfg->format = BitsPerSampleToAudioFormat(pcm_cfg.bitsPerSample);
+	  
+#ifdef SPRD_FEATURE_A2DPOFFLOAD
+
+//more modified !!!!! here ,codec para should be verify
+ }else if((session_type_ == SessionType::A2DP_HARDWARE_OFFLOAD_DATAPATH)&&(a2dp_offload_enabled_sprd_for_hal)){
+	  if (hal_audio_cfg.getDiscriminator() !=
+	      AudioConfiguration::hidl_discriminator::codecConfig) {
+	    audio_cfg->sample_rate = kBluetoothDefaultSampleRate;
+	    audio_cfg->channel_mask = kBluetoothDefaultOutputChannelModeMask;
+	    audio_cfg->format = kBluetoothDefaultAudioFormatBitsPerSample;
+		
+		LOG(ERROR) << __func__ << " session_type_ == A2DP_HARDWARE_OFFLOAD_DATAPATH ,but hal_audio_cfg.getDiscriminator() != AudioConfiguration::hidl_discriminator::pcmConfig";
+		
+	    return false;
+	  }
+	  //offload only support sbc ,channelMode may be wrong 
+	  //config.sbcConfig({})
+	  const CodecConfiguration& codec_cfg = hal_audio_cfg.codecConfig();
+	  memcpy(&OffLoadSbcParameters,&(codec_cfg.config.sbcConfig()),sizeof(OffLoadSbcParameters));
+	  
+	  /*
+	  OffLoadSbcParameters = codec_cfg.config.sbcConfig();
+	  
+	  LOG(ERROR) << __func__ << ": session_type=" << toString(session_type_)
+				   << ", cookie=" << StringPrintf("%#hx", cookie_) << ", state=" << state_ << ", sbc_cfg=["
+				   << toString(sbc_cfg) << "]";	 
+      
+	  if (sbc_cfg.sampleRate == SampleRate::RATE_UNKNOWN ||
+		  sbc_cfg.channelMode == ChannelMode::UNKNOWN ||
+		  sbc_cfg.bitsPerSample == BitsPerSample::BITS_UNKNOWN) {
+		return false;
+	  }	
+	  
+      audio_cfg->sample_rate = sbc_cfg.sampleRate;
+	  //may be something wrong
+	  audio_cfg->channel_mask =
+		  (is_stereo_to_mono_ ? AUDIO_CHANNEL_OUT_STEREO : ChannelModeToAudioFormat(sbc_cfg.channelMode));
+	  //audio_cfg->format = sbc_cfg.bitsPerSample;
+	  */
+	 audio_cfg->sample_rate = kBluetoothDefaultSampleRate;
+	 audio_cfg->channel_mask = kBluetoothDefaultOutputChannelModeMask;
+	 audio_cfg->format = kBluetoothDefaultAudioFormatBitsPerSample; 
   }
-  const PcmParameters& pcm_cfg = hal_audio_cfg.pcmConfig();
-  LOG(VERBOSE) << __func__ << ": session_type=" << toString(session_type_)
-               << ", cookie=" << StringPrintf("%#hx", cookie_) << ", state=" << state_ << ", PcmConfig=["
-               << toString(pcm_cfg) << "]";
-  if (pcm_cfg.sampleRate == SampleRate::RATE_UNKNOWN ||
-      pcm_cfg.channelMode == ChannelMode::UNKNOWN ||
-      pcm_cfg.bitsPerSample == BitsPerSample::BITS_UNKNOWN) {
-    return false;
-  }
-  audio_cfg->sample_rate = SampleRateToAudioFormat(pcm_cfg.sampleRate);
-  audio_cfg->channel_mask =
-      (is_stereo_to_mono_ ? AUDIO_CHANNEL_OUT_STEREO : ChannelModeToAudioFormat(pcm_cfg.channelMode));
-  audio_cfg->format = BitsPerSampleToAudioFormat(pcm_cfg.bitsPerSample);
+#endif
+
+
   return true;
 }
 

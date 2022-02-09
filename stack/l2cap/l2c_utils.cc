@@ -1523,14 +1523,25 @@ tL2C_CCB* l2cu_allocate_ccb(tL2C_LCB* p_lcb, uint16_t cid) {
 bool l2cu_start_post_bond_timer(uint16_t handle) {
   tL2C_LCB* p_lcb = l2cu_find_lcb_by_handle(handle);
 
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  L2CAP_TRACE_DEBUG("%s: plcb: %p", __func__, p_lcb);
+#endif
   if (!p_lcb) return (true);
 
   p_lcb->is_bonding = false;
 
   /* Only start timer if no control blocks allocated */
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  L2CAP_TRACE_DEBUG("%s: p_first_ccb: %p", __func__,
+                    p_lcb->ccb_queue.p_first_ccb);
+#endif
   if (p_lcb->ccb_queue.p_first_ccb != NULL) return (false);
 
   /* If no channels on the connection, start idle timeout */
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  L2CAP_TRACE_DEBUG("%s: state: %d, idle_tout: %d", __func__,
+                    p_lcb->link_state, p_lcb->idle_timeout);
+#endif
   if ((p_lcb->link_state == LST_CONNECTED) ||
       (p_lcb->link_state == LST_CONNECTING) ||
       (p_lcb->link_state == LST_DISCONNECTING)) {
@@ -2366,7 +2377,11 @@ bool l2cu_set_acl_priority(const RawAddress& bd_addr, uint8_t priority,
     return (false);
   }
 
-  if (BTM_IS_BRCM_CONTROLLER()) {
+  if (BTM_IS_BRCM_CONTROLLER()
+#if (defined(SPRD_FEATURE_ACL_PRIORITY) && SPRD_FEATURE_ACL_PRIORITY == TRUE)
+    || BTM_IS_SPRD_CONTROLLER()
+#endif
+  ) {
     /* Called from above L2CAP through API; send VSC if changed */
     if ((!reset_after_rs && (priority != p_lcb->acl_priority)) ||
         /* Called because of a master/slave role switch; if high resend VSC */
@@ -3119,9 +3134,15 @@ static tL2C_CCB* l2cu_get_next_channel_in_rr(tL2C_LCB* p_lcb) {
         return NULL;
       }
 
-      L2CAP_TRACE_DEBUG("RR scan pri=%d, lcid=0x%04x, q_cout=%d",
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+        L2CAP_TRACE_VERBOSE("RR scan pri=%d, lcid=0x%04x, q_cout=%d",
                         p_ccb->ccb_priority, p_ccb->local_cid,
                         fixed_queue_length(p_ccb->xmit_hold_q));
+#else
+        L2CAP_TRACE_DEBUG("RR scan pri=%d, lcid=0x%04x, q_cout=%d",
+                        p_ccb->ccb_priority, p_ccb->local_cid,
+                        fixed_queue_length(p_ccb->xmit_hold_q));
+#endif
 
       /* store the next serving channel */
       /* this channel is the last channel of its priority group */

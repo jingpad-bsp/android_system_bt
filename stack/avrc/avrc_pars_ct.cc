@@ -31,6 +31,15 @@
 
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#define BTRC_MAX_ELEM_ATTR_SIZE 7
+#define BTRC_MAX_ATTR_STR_LEN       255
+typedef struct {
+  uint32_t attr_id;
+  uint8_t text[BTRC_MAX_ATTR_STR_LEN];
+} element_attr_val_t;
+#endif
+
 /*******************************************************************************
  *
  * Function         avrc_pars_vendor_rsp
@@ -50,6 +59,12 @@ static tAVRC_STS avrc_pars_vendor_rsp(tAVRC_MSG_VENDOR* p_msg,
   uint16_t len;
 #if (AVRC_ADV_CTRL_INCLUDED == TRUE)
   uint8_t eventid = 0;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  uint8_t num_attr=0;
+  uint32_t i;
+  static tAVRC_ATTR_ENTRY element_attrs[BTRC_MAX_ELEM_ATTR_SIZE];
+  static element_attr_val_t attr[BTRC_MAX_ELEM_ATTR_SIZE];
+#endif
 #endif
 
   /* Check the vendor data */
@@ -127,10 +142,44 @@ static tAVRC_STS avrc_pars_vendor_rsp(tAVRC_MSG_VENDOR* p_msg,
         p_result->reg_notif.event_id = eventid;
         BE_STREAM_TO_UINT8(p_result->reg_notif.param.volume, p);
       }
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+      else if (AVRC_EVT_TRACK_CHANGE == eventid
+               && (AVRC_RSP_CHANGED == p_msg->hdr.ctype || AVRC_RSP_INTERIM == p_msg->hdr.ctype
+               || AVRC_RSP_REJ == p_msg->hdr.ctype || AVRC_RSP_NOT_IMPL == p_msg->hdr.ctype)) {
+        p_result->reg_notif.status = p_msg->hdr.ctype;
+        p_result->reg_notif.event_id = eventid;
+      }
+#endif
       AVRC_TRACE_DEBUG("%s PDU reg notif response:event %x, volume %x",
                        __func__, eventid, p_result->reg_notif.param.volume);
 #endif /* (AVRC_ADV_CTRL_INCLUDED == TRUE) */
       break;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+     case AVRC_PDU_GET_ELEMENT_ATTR: /* 0x20 */
+#if (AVRC_ADV_CTRL_INCLUDED == TRUE)
+      BE_STREAM_TO_UINT8(num_attr, p);
+      AVRC_TRACE_DEBUG("avrc_pars_vendor_rsp PDU get_elem, num:  %x",num_attr);
+
+      if (num_attr == 0) {
+        status = AVRC_STS_BAD_PARAM;
+      } else {
+        if (num_attr > BTRC_MAX_ELEM_ATTR_SIZE) {
+          num_attr = BTRC_MAX_ELEM_ATTR_SIZE;
+        }
+        for (i=0; i < num_attr; i++) {
+          BE_STREAM_TO_UINT32(element_attrs[i].attr_id,p)
+          BE_STREAM_TO_UINT16(element_attrs[i].name.charset_id,p)
+          BE_STREAM_TO_UINT16(element_attrs[i].name.str_len,p)
+          BE_STREAM_TO_ARRAY(p,attr[i].text,element_attrs[i].name.str_len);
+          element_attrs[i].name.p_str = attr[i].text;
+        }
+        p_result->get_attrs.num_attrs = num_attr;
+        p_result->get_attrs.status = p_msg->hdr.ctype;
+        p_result->get_attrs.p_attrs = element_attrs;
+      }
+#endif
+    break;
+#endif
     default:
       status = AVRC_STS_BAD_CMD;
       break;
@@ -308,7 +357,7 @@ static tAVRC_STS avrc_pars_browse_rsp(tAVRC_MSG_BROWSE* p_msg,
             BE_STREAM_TO_UINT16(player->name.str_len, p);
             min_len += player->name.str_len;
             if (pkt_len < min_len) goto browse_length_error;
-            player->name.p_str = (uint8_t*)osi_malloc(
+            player->name.p_str = (uint8_t*)osi_calloc(
                 (player->name.str_len + 1) * sizeof(uint8_t));
             BE_STREAM_TO_ARRAY(p, player->name.p_str, player->name.str_len);
             AVRC_TRACE_DEBUG(
@@ -336,7 +385,7 @@ static tAVRC_STS avrc_pars_browse_rsp(tAVRC_MSG_BROWSE* p_msg,
             BE_STREAM_TO_UINT16(folder->name.str_len, p);
             min_len += folder->name.str_len;
             if (pkt_len < min_len) goto browse_length_error;
-            folder->name.p_str = (uint8_t*)osi_malloc(
+            folder->name.p_str = (uint8_t*)osi_calloc(
                 (folder->name.str_len + 1) * sizeof(uint8_t));
             BE_STREAM_TO_ARRAY(p, folder->name.p_str, folder->name.str_len);
             AVRC_TRACE_DEBUG("%s type %d playable %d cs %d name len %d",
@@ -464,7 +513,7 @@ static tAVRC_STS avrc_pars_browse_rsp(tAVRC_MSG_BROWSE* p_msg,
         AVRC_TRACE_DEBUG("%s AVRC_PDU_SET_BROWSED_PLAYER item: %d len: %d",
                          __func__, i, folder_name->str_len);
         folder_name->p_str =
-            (uint8_t*)osi_malloc((folder_name->str_len + 1) * sizeof(uint8_t));
+            (uint8_t*)osi_calloc((folder_name->str_len + 1) * sizeof(uint8_t));
         BE_STREAM_TO_ARRAY(p, folder_name->p_str, folder_name->str_len);
       }
       break;

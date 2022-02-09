@@ -16,6 +16,7 @@ cc_library_static {
     defaults: ["libbt-hci_defaults"],
     srcs: [
         "src/btsnoop.cc",
+	"src/btsnoop_sprd.cc",
         "src/btsnoop_mem.cc",
         "src/btsnoop_net.cc",
         "src/buffer_allocator.cc",

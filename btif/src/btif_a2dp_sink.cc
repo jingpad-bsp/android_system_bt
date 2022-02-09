@@ -42,6 +42,12 @@
 using bluetooth::common::MessageLoopThread;
 using LockGuard = std::lock_guard<std::mutex>;
 
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+int sample_rate_temp;
+int bits_per_sample_temp;
+int channel_type_temp;
+#endif
+
 /**
  * The receiving queue buffer size.
  */
@@ -458,6 +464,12 @@ static void btif_a2dp_sink_audio_handle_start_decoding() {
     return;  // Already started decoding
 
 #ifndef OS_GENERIC
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  if (btif_a2dp_sink_cb.audio_track == nullptr) {
+    btif_a2dp_sink_cb.audio_track =
+    BtifAvrcpAudioTrackCreate(sample_rate_temp, bits_per_sample_temp, channel_type_temp);
+  }
+#endif
   BtifAvrcpAudioTrackStart(btif_a2dp_sink_cb.audio_track);
 #endif
 
@@ -472,8 +484,15 @@ static void btif_a2dp_sink_audio_handle_start_decoding() {
 
 static void btif_a2dp_sink_on_decode_complete(uint8_t* data, uint32_t len) {
 #ifndef OS_GENERIC
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  if (btif_a2dp_sink_cb.audio_track != nullptr)
+    BtifAvrcpAudioTrackWriteData(btif_a2dp_sink_cb.audio_track,
+                                   reinterpret_cast<void*>(data), len);
+  else APPL_TRACE_ERROR("%s: invalid audio_track !!", __func__);
+#else
   BtifAvrcpAudioTrackWriteData(btif_a2dp_sink_cb.audio_track,
                                reinterpret_cast<void*>(data), len);
+#endif
 #endif
 }
 
@@ -553,11 +572,17 @@ static void btif_a2dp_sink_decoder_update_event(
                    p_buf->codec_info[5], p_buf->codec_info[6]);
 
   int sample_rate = A2DP_GetTrackSampleRate(p_buf->codec_info);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  sample_rate_temp = sample_rate;
+#endif
   if (sample_rate == -1) {
     LOG_ERROR(LOG_TAG, "%s: cannot get the track frequency", __func__);
     return;
   }
   int bits_per_sample = A2DP_GetTrackBitsPerSample(p_buf->codec_info);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  bits_per_sample_temp = bits_per_sample;
+#endif
   if (bits_per_sample == -1) {
     LOG_ERROR(LOG_TAG, "%s: cannot get the bits per sample", __func__);
     return;
@@ -568,6 +593,9 @@ static void btif_a2dp_sink_decoder_update_event(
     return;
   }
   int channel_type = A2DP_GetSinkTrackChannelType(p_buf->codec_info);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  channel_type_temp = channel_type;
+#endif
   if (channel_type == -1) {
     LOG_ERROR(LOG_TAG, "%s: cannot get the Sink channel type", __func__);
     return;
@@ -616,6 +644,11 @@ uint8_t btif_a2dp_sink_enqueue_buf(BT_HDR* p_pkt) {
     osi_free(fixed_queue_try_dequeue(btif_a2dp_sink_cb.rx_audio_queue));
     return ret;
   }
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  if (btif_a2dp_sink_cb.rx_audio_queue == NULL) {
+    return 0;
+  }
+#endif
 
   BTIF_TRACE_VERBOSE("%s +", __func__);
   /* Allocate and queue this buffer */

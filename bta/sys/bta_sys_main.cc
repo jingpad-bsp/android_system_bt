@@ -208,6 +208,12 @@ bool bta_sys_sm_execute(BT_HDR* p_msg) {
 
   APPL_TRACE_EVENT("bta_sys_sm_execute state:%d, event:0x%x", bta_sys_cb.state,
                    p_msg->event);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  if ((p_msg->event & 0x00ff) >= BTA_SYS_NUM_ACTIONS) {
+    APPL_TRACE_ERROR("%s invalid event", __func__);
+    return freebuf;
+  }
+#endif
 
   /* look up the state table for the current state */
   state_table = bta_sys_st_tbl[bta_sys_cb.state];

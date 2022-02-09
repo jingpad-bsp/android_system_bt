@@ -35,6 +35,14 @@
 #include "osi/include/log.h"
 #include "osi/include/properties.h"
 
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+#include "device/include/interop.h"
+#endif
+
+#if (defined(SPRD_FEATURE_A2DPOFFLOAD) && SPRD_FEATURE_A2DPOFFLOAD == TRUE)
+#include "btif_av_co.h"
+#endif
+
 /* The Media Type offset within the codec info byte array */
 #define A2DP_MEDIA_TYPE_OFFSET 1
 
@@ -187,12 +195,51 @@ bool A2dpCodecConfig::getCodecSpecificConfig(tBT_A2DP_OFFLOAD* p_a2dp_offload) {
   tA2DP_CODEC_TYPE codec_type = A2DP_GetCodecType(codec_config);
   switch (codec_type) {
     case A2DP_MEDIA_CT_SBC:
+#if (defined(SPRD_FEATURE_A2DPOFFLOAD) && SPRD_FEATURE_A2DPOFFLOAD == TRUE)
+{
+  bool a2dp_offload_enabled_sprd_for_hal;
+  char value_sup[PROPERTY_VALUE_MAX] = {'\0'};
+  char value_dis[PROPERTY_VALUE_MAX] = {'\0'};
+  osi_property_get("ro.bluetooth.a2dp_offload.supported", value_sup, "false");
+  osi_property_get("persist.bluetooth.a2dp_offload.disabled", value_dis,
+				   "false");
+  a2dp_offload_enabled_sprd_for_hal =
+	  (strcmp(value_sup, "true") == 0) && (strcmp(value_dis, "false") == 0);
+
+  LOG_DEBUG(LOG_TAG, "%s: a2dp_offload_enabled_sprd_for_hal =  %d", __func__, a2dp_offload_enabled_sprd_for_hal);
+	  
+	if(!a2dp_offload_enabled_sprd_for_hal){
+	  p_a2dp_offload->codec_info[0] = codec_config[4];	// blk_len | subbands | Alloc Method
+	  p_a2dp_offload->codec_info[1] = codec_config[5];	// Min bit pool
+	  p_a2dp_offload->codec_info[2] = codec_config[6];	// Max bit pool
+	  // more modified !!!quan android10 generate
+	  p_a2dp_offload->codec_info[3] = codec_config[3];  // Sample freq | channel mode
+	} else {
+		
+		p_a2dp_offload->codec_info[0] = codec_config[3];
+		p_a2dp_offload->codec_info[1] = codec_config[4];  
+        p_a2dp_offload->codec_info[2] = (vendor_codec_config[6] + vendor_codec_config[6])>> 1;  // use max bit pool
+        p_a2dp_offload->codec_info[3] = codec_config[3]; 
+
+	//more modified !!!be careful, to cp2 codec order changed
+	/*
+	  p_a2dp_offload->codec_info[0] = codec_config[4];
+	  p_a2dp_offload->codec_info[1] = codec_config[5];	// blk_len | subbands | Alloc Method
+	  p_a2dp_offload->codec_info[2] = (vendor_codec_config[6] + vendor_codec_config[6])>> 1;  // use max bit pool
+	  LOG_DEBUG(LOG_TAG, "%s: vendor_codec_config[6] = %d", __func__, vendor_codec_config[6]);
+	  //quan android10 generate
+	  p_a2dp_offload->codec_info[3] = codec_config[3];  // Sample freq | channel mode
+	*/
+	}
+}
+#else
       p_a2dp_offload->codec_info[0] =
           codec_config[4];  // blk_len | subbands | Alloc Method
       p_a2dp_offload->codec_info[1] = codec_config[5];  // Min bit pool
       p_a2dp_offload->codec_info[2] = codec_config[6];  // Max bit pool
       p_a2dp_offload->codec_info[3] =
           codec_config[3];  // Sample freq | channel mode
+#endif
       break;
     case A2DP_MEDIA_CT_AAC:
       p_a2dp_offload->codec_info[0] = codec_config[3];  // object type
@@ -381,6 +428,8 @@ bool A2dpCodecConfig::setCodecUserConfig(
   bool encoder_restart_input = *p_restart_input;
   bool encoder_restart_output = *p_restart_output;
   bool encoder_config_updated = *p_config_updated;
+
+//more modified !!! quan test
 
   if (!a2dp_offload_status) {
     if (updateEncoderUserConfig(p_peer_params, &encoder_restart_input,
@@ -695,6 +744,7 @@ bool A2dpCodecs::setCodecConfig(const uint8_t* p_peer_codec_info,
     return false;
   }
   if (select_current_codec) {
+  	LOG_ERROR(LOG_TAG, "%s: current_codec_config_ saved", __func__);
     current_codec_config_ = a2dp_codec_config;
   }
   return true;
@@ -1067,6 +1117,38 @@ bool A2DP_IsPeerSourceCodecValid(const uint8_t* p_codec_info) {
 
   return false;
 }
+
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+bool A2DP_IsPeerSourceCodecValid_Ex(const uint8_t* p_codec_info,
+                                    const RawAddress& peer_address) {
+  tA2DP_CODEC_TYPE codec_type = A2DP_GetCodecType(p_codec_info);
+
+  LOG_VERBOSE(LOG_TAG, "%s: codec_type = 0x%x", __func__, codec_type);
+
+  if ((codec_type == A2DP_MEDIA_CT_AAC) &&
+      ((interop_match_addr(INTEROP_DISABLE_AAC_CODEC_SUPPORT,
+                           &peer_address) == true))) {
+    LOG_WARN(LOG_TAG,
+             "%s: remote device not support AAC codec well, return.",
+             __func__);
+    return false;
+  }
+
+  switch (codec_type) {
+    case A2DP_MEDIA_CT_SBC:
+      return A2DP_IsPeerSourceCodecValidSbc(p_codec_info);
+    case A2DP_MEDIA_CT_AAC:
+      return false;
+      return A2DP_IsPeerSourceCodecValidAac(p_codec_info);
+    case A2DP_MEDIA_CT_NON_A2DP:
+      return A2DP_IsVendorPeerSourceCodecValid(p_codec_info);
+    default:
+      break;
+  }
+
+  return false;
+}
+#endif
 
 bool A2DP_IsPeerSinkCodecValid(const uint8_t* p_codec_info) {
   tA2DP_CODEC_TYPE codec_type = A2DP_GetCodecType(p_codec_info);

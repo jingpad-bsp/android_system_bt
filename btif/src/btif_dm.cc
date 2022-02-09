@@ -71,6 +71,10 @@
 #include "stack/btm/btm_int.h"
 #include "stack_config.h"
 
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#include "btdevice.h"
+#endif
+
 using bluetooth::Uuid;
 /******************************************************************************
  *  Constants & Macros
@@ -208,6 +212,11 @@ static std::mutex bond_event_lock;
 static size_t btif_num_bond_events = 0;
 static size_t btif_events_start_index = 0;
 static size_t btif_events_end_index = 0;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+static size_t btif_acl_connect_count = 0;
+static size_t btif_sink_acl_connect = 0;
+static size_t btif_src_acl_connect = 0;
+#endif
 
 /******************************************************************************
  *  Static functions
@@ -973,21 +982,12 @@ static void btif_dm_ssp_cfm_req_evt(tBTA_DM_SP_CFM_REQ* p_ssp_cfm_req) {
 
   /* If JustWorks auto-accept */
   if (p_ssp_cfm_req->just_works) {
-    /* Pairing consent for JustWorks needed if:
-     * 1. Incoming (non-temporary) pairing is detected AND
-     * 2. local IO capabilities are DisplayYesNo AND
-     * 3. remote IO capabiltiies are DisplayOnly or NoInputNoOutput;
+    /* Pairing consent for JustWorks NOT needed if:
+     * 1. Incoming temporary pairing is detected
      */
-    if (is_incoming && pairing_cb.bond_type != BOND_TYPE_TEMPORARY &&
-        ((p_ssp_cfm_req->loc_io_caps == HCI_IO_CAP_DISPLAY_YESNO) &&
-         (p_ssp_cfm_req->rmt_io_caps == HCI_IO_CAP_DISPLAY_ONLY ||
-          p_ssp_cfm_req->rmt_io_caps == HCI_IO_CAP_NO_IO))) {
+    if (is_incoming && pairing_cb.bond_type == BOND_TYPE_TEMPORARY) {
       BTIF_TRACE_EVENT(
-          "%s: User consent needed for incoming pairing request. loc_io_caps: "
-          "%d, rmt_io_caps: %d",
-          __func__, p_ssp_cfm_req->loc_io_caps, p_ssp_cfm_req->rmt_io_caps);
-    } else {
-      BTIF_TRACE_EVENT("%s: Auto-accept JustWorks pairing", __func__);
+          "%s: Auto-accept JustWorks pairing for temporary incoming", __func__);
       btif_dm_ssp_reply(&bd_addr, BT_SSP_VARIANT_CONSENT, true, 0);
       return;
     }
@@ -1155,7 +1155,10 @@ static void btif_dm_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
           bond_state_changed(BT_STATUS_SUCCESS, bd_addr, BT_BOND_STATE_BONDING);
         }
         bond_state_changed(BT_STATUS_SUCCESS, bd_addr, BT_BOND_STATE_BONDED);
-
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+        BTIF_TRACE_DEBUG("%s: wait for RNR cancel, sleep 300ms.", __func__);
+        usleep(300 * 1000);
+#endif
         btif_dm_get_remote_services(bd_addr);
       }
     }
@@ -1722,6 +1725,17 @@ static void btif_dm_upstreams_evt(uint16_t event, char* p_param) {
 
       HAL_CBACK(bt_hal_cbacks, acl_state_changed_cb, BT_STATUS_SUCCESS,
                 &bd_addr, BT_ACL_STATE_CONNECTED);
+
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+      btif_acl_connect_count++;
+      if (btdevice_get_current_tsep() == AVDT_TSEP_SNK) {
+        btif_sink_acl_connect++;
+        BTIF_TRACE_DEBUG("btif_sink_acl_connect: %d", btif_sink_acl_connect);
+      } else if (btdevice_get_current_tsep() == AVDT_TSEP_SRC) {
+        btif_src_acl_connect++;
+        BTIF_TRACE_DEBUG("btif_src_acl_connect: %d", btif_src_acl_connect);
+      }
+#endif
       break;
 
     case BTA_DM_LINK_DOWN_EVT:
@@ -1732,6 +1746,28 @@ static void btif_dm_upstreams_evt(uint16_t event, char* p_param) {
           "BTA_DM_LINK_DOWN_EVT. Sending BT_ACL_STATE_DISCONNECTED");
       HAL_CBACK(bt_hal_cbacks, acl_state_changed_cb, BT_STATUS_SUCCESS,
                 &bd_addr, BT_ACL_STATE_DISCONNECTED);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+      if (btdevice_get_device_type(&bd_addr) == AVDT_TSEP_SNK && (btif_src_acl_connect > 0)) {
+        btif_src_acl_connect--;
+        BTIF_TRACE_DEBUG("btif_src_acl_connect: %d", btif_src_acl_connect);
+      } else if (btif_sink_acl_connect > 0) {
+        btif_sink_acl_connect--;
+        BTIF_TRACE_DEBUG("btif_sink_acl_connect: %d", btif_sink_acl_connect);
+      }
+
+      if (btif_acl_connect_count > 1 && btif_sink_acl_connect == 1) {
+        btdevice_set_current_tsep(AVDT_TSEP_SNK);
+      } else if (btif_acl_connect_count > 1 && btif_src_acl_connect == 1) {
+        btdevice_set_current_tsep(AVDT_TSEP_SRC);
+      }
+      btif_acl_connect_count--;
+      BTIF_TRACE_DEBUG("btif_acl_connect_count:%d",btif_acl_connect_count);
+      if (btif_acl_connect_count == 0) {
+        btdevice_set_current_tsep(AVDT_TSEP_INVALID);
+        btif_sink_acl_connect = 0;
+        btif_src_acl_connect = 0;
+      }
+#endif
       break;
 
     case BTA_DM_HW_ERROR_EVT:
@@ -1806,9 +1842,13 @@ static void btif_dm_upstreams_evt(uint16_t event, char* p_param) {
           break;
       }
       break;
+    case BTA_DM_BLE_CONSENT_REQ_EVT:
+      BTIF_TRACE_DEBUG("BTA_DM_BLE_CONSENT_REQ_EVT. ");
+      btif_dm_ble_sec_req_evt(&p_data->ble_req, true);
+      break;
     case BTA_DM_BLE_SEC_REQ_EVT:
       BTIF_TRACE_DEBUG("BTA_DM_BLE_SEC_REQ_EVT. ");
-      btif_dm_ble_sec_req_evt(&p_data->ble_req);
+      btif_dm_ble_sec_req_evt(&p_data->ble_req, false);
       break;
     case BTA_DM_BLE_PASSKEY_NOTIF_EVT:
       BTIF_TRACE_DEBUG("BTA_DM_BLE_PASSKEY_NOTIF_EVT. ");
@@ -2883,7 +2923,7 @@ static void btif_dm_ble_auth_cmpl_evt(tBTA_DM_AUTH_CMPL* p_auth_cmpl) {
       btif_storage_remove_bonded_device(&bdaddr);
       state = BT_BOND_STATE_NONE;
     } else {
-      btif_dm_save_ble_bonding_keys();
+      btif_dm_save_ble_bonding_keys(bdaddr);
       btif_dm_get_remote_services_by_transport(&bd_addr, GATT_TRANSPORT_LE);
     }
   } else {
@@ -2964,10 +3004,8 @@ void btif_dm_get_ble_local_keys(tBTA_DM_BLE_LOCAL_KEY_MASK* p_key_mask,
   BTIF_TRACE_DEBUG("%s  *p_key_mask=0x%02x", __func__, *p_key_mask);
 }
 
-void btif_dm_save_ble_bonding_keys(void) {
+void btif_dm_save_ble_bonding_keys(RawAddress& bd_addr) {
   BTIF_TRACE_DEBUG("%s", __func__);
-
-  RawAddress bd_addr = pairing_cb.bd_addr;
 
   if (pairing_cb.ble.is_penc_key_rcvd) {
     btif_storage_add_ble_bonding_key(
@@ -3020,14 +3058,14 @@ void btif_dm_remove_ble_bonding_keys(void) {
  * Returns          void
  *
  ******************************************************************************/
-void btif_dm_ble_sec_req_evt(tBTA_DM_BLE_SEC_REQ* p_ble_req) {
+void btif_dm_ble_sec_req_evt(tBTA_DM_BLE_SEC_REQ* p_ble_req, bool is_consent) {
   bt_bdname_t bd_name;
   uint32_t cod;
   int dev_type;
 
   BTIF_TRACE_DEBUG("%s", __func__);
 
-  if (pairing_cb.state == BT_BOND_STATE_BONDING) {
+  if (!is_consent && pairing_cb.state == BT_BOND_STATE_BONDING) {
     BTIF_TRACE_DEBUG("%s Discard security request", __func__);
     return;
   }
@@ -3244,6 +3282,26 @@ void btif_dm_on_disable() {
  *
  ******************************************************************************/
 void btif_dm_read_energy_info() { BTA_DmBleGetEnergyInfo(bta_energy_info_cb); }
+
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+/*******************************************************************************
+ *
+ * Function        btif_dm_read_in_bonding_state
+ *
+ * Description     Reads the special bd_addr whether in pairing state
+ *
+ * Returns         uint8_t
+ *
+ ******************************************************************************/
+bool btif_dm_read_in_bonding_state(const RawAddress& bd_addr) {
+    if((bd_addr == pairing_cb.bd_addr) && (pairing_cb.state == BT_BOND_STATE_BONDING)) {
+        return true;
+    } else {
+        BTIF_TRACE_ERROR("%s: Unknown address or not in bonding_state", __func__);
+        return false;
+    }
+}
+#endif
 
 static char* btif_get_default_local_name() {
   if (btif_default_local_name[0] == '\0') {

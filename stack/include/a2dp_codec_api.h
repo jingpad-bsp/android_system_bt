@@ -584,6 +584,16 @@ bool A2DP_IsSinkCodecValid(const uint8_t* p_codec_info);
 // otherwise false.
 bool A2DP_IsPeerSourceCodecValid(const uint8_t* p_codec_info);
 
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+// Checks whether the codec capabilities contain a valid peer A2DP Source
+// codec by address.
+// NOTE: only codecs that are implemented are considered valid.
+// Returns true if |p_codec_info| contains information about a valid codec,
+// otherwise false.
+bool A2DP_IsPeerSourceCodecValid_Ex(const uint8_t* p_codec_info,
+                                    const RawAddress& peer_address);
+#endif
+
 // Checks whether the codec capabilities contain a valid peer A2DP Sink codec.
 // NOTE: only codecs that are implemented are considered valid.
 // Returns true if |p_codec_info| contains information about a valid codec,

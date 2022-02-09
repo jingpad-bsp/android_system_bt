@@ -57,6 +57,10 @@
 
 #include "smp_api.h"
 
+#ifdef HAS_BDROID_BUILDCFG
+#include "bdroid_buildcfg.h"
+#endif
+
 #ifndef DEFAULT_CONF_TRACE_LEVEL
 #define DEFAULT_CONF_TRACE_LEVEL BT_TRACE_LEVEL_WARNING
 #endif
@@ -172,7 +176,7 @@ static tBTTRC_FUNC_MAP bttrc_set_level_map[] = {
     {0, 0, NULL, NULL, DEFAULT_CONF_TRACE_LEVEL}};
 
 void LogMsg(uint32_t trace_set_mask, const char* fmt_str, ...) {
-  char buffer[BTE_LOG_BUF_SIZE];
+  char buffer[BTE_LOG_BUF_SIZE] = {0};
   int trace_layer = TRACE_GET_LAYER(trace_set_mask);
   if (trace_layer >= TRACE_LAYER_MAX_NUM) trace_layer = 0;
 
@@ -236,6 +240,19 @@ static void load_levels_from_config(const config_t* config) {
   }
 }
 
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+#include "btsnoop_sprd.h"
+void bte_trace_level_switch(int debug) {
+  const stack_config_t *stack_config = stack_config_get_interface();
+  if (debug) {
+      LOG_INFO(LOG_TAG, "bte_trace_level_switch debug");
+      load_levels_from_config(stack_config->get_debug_config());
+  } else {
+      LOG_INFO(LOG_TAG, "bte_trace_level_switch default");
+      load_levels_from_config(stack_config->get_all());
+  }
+}
+#endif
 static future_t* init(void) {
   const stack_config_t* stack_config = stack_config_get_interface();
   if (!stack_config->get_trace_config_enabled()) {
@@ -244,8 +261,18 @@ static future_t* init(void) {
   }
 
   init_cpp_logging(stack_config->get_all());
-
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+  const btsnoop_sprd_t *btsnoop_sprd = btsnoop_sprd_get_interface();
+  if (btsnoop_sprd->is_btsnoop_enable()) {
+    LOG_INFO(LOG_TAG, "using compile debug trace levle");
+    btsnoop_sprd->btsnoop_open();
+  } else {
+    LOG_INFO(LOG_TAG, "using compile default trace levle");
+    btsnoop_sprd->btsnoop_open();
+  }
+#else
   load_levels_from_config(stack_config->get_all());
+#endif
   return NULL;
 }
 

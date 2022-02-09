@@ -205,9 +205,17 @@ void avrc_start_cmd_timer(uint8_t handle, uint8_t label, uint8_t msg_mask) {
 
   AVRC_TRACE_DEBUG("AVRC: starting timer (handle=0x%02x, label=0x%02x)", handle,
                    label);
-
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  if (avrc_cb.ccb_int[handle].tle != NULL) {
+    AVRC_TRACE_DEBUG("AVRC: in starting timer (handle=0x%02x, label=0x%02x)", handle,
+                     label);
+    alarm_set_on_mloop(avrc_cb.ccb_int[handle].tle, AVRC_CMD_TOUT_MS,
+                       avrc_process_timeout, param);
+  }
+#else
   alarm_set_on_mloop(avrc_cb.ccb_int[handle].tle, AVRC_CMD_TOUT_MS,
                      avrc_process_timeout, param);
+#endif
 }
 
 /******************************************************************************
@@ -236,7 +244,7 @@ static uint8_t* avrc_get_data_ptr(BT_HDR* p_pkt) {
 static BT_HDR* avrc_copy_packet(BT_HDR* p_pkt, int rsp_pkt_len) {
   const int offset = MAX(AVCT_MSG_OFFSET, p_pkt->offset);
   const int pkt_len = MAX(rsp_pkt_len, p_pkt->len);
-  BT_HDR* p_pkt_copy = (BT_HDR*)osi_malloc(BT_HDR_SIZE + offset + pkt_len);
+  BT_HDR* p_pkt_copy = (BT_HDR*)osi_calloc(BT_HDR_SIZE + offset + pkt_len);
 
   /* Copy the packet header, set the new offset, and copy the payload */
   memcpy(p_pkt_copy, p_pkt, BT_HDR_SIZE);
@@ -315,7 +323,7 @@ static uint16_t avrc_send_continue_frag(uint8_t handle, uint8_t label) {
   if (p_pkt->len > AVRC_MAX_CTRL_DATA_LEN) {
     int offset_len = MAX(AVCT_MSG_OFFSET, p_pkt->offset);
     p_pkt_old = p_fcb->p_fmsg;
-    p_pkt = (BT_HDR*)osi_malloc(AVRC_PACKET_LEN + offset_len + BT_HDR_SIZE);
+    p_pkt = (BT_HDR*)osi_calloc(AVRC_PACKET_LEN + offset_len + BT_HDR_SIZE);
     p_pkt->len = AVRC_MAX_CTRL_DATA_LEN;
     p_pkt->offset = AVCT_MSG_OFFSET;
     p_pkt->layer_specific = p_pkt_old->layer_specific;
@@ -425,7 +433,7 @@ static BT_HDR* avrc_proc_vendor_command(uint8_t handle, uint8_t label,
   }
 
   if (status != AVRC_STS_NO_ERROR) {
-    p_rsp = (BT_HDR*)osi_malloc(BT_DEFAULT_BUFFER_SIZE);
+    p_rsp = (BT_HDR*)osi_calloc(BT_DEFAULT_BUFFER_SIZE);
     p_rsp->offset = p_pkt->offset;
     p_data = (uint8_t*)(p_rsp + 1) + p_pkt->offset;
     *p_data++ = AVRC_RSP_REJ;
@@ -486,7 +494,7 @@ static uint8_t avrc_proc_far_msg(uint8_t handle, uint8_t label, uint8_t cr,
     if (pkt_type == AVRC_PKT_START) {
       /* Allocate buffer for re-assembly */
       p_rcb->rasm_pdu = *p_data;
-      p_rcb->p_rmsg = (BT_HDR*)osi_malloc(BT_DEFAULT_BUFFER_SIZE);
+      p_rcb->p_rmsg = (BT_HDR*)osi_calloc(BT_DEFAULT_BUFFER_SIZE);
       /* Copy START packet to buffer for re-assembling fragments */
       memcpy(p_rcb->p_rmsg, p_pkt, sizeof(BT_HDR)); /* Copy bt hdr */
 
@@ -633,9 +641,10 @@ static void avrc_msg_cback(uint8_t handle, uint8_t label, uint8_t cr,
   tAVRC_MSG_VENDOR* p_msg = &msg.vendor;
 
   if (cr == AVCT_CMD && (p_pkt->layer_specific & AVCT_DATA_CTRL &&
-                         AVRC_PACKET_LEN < sizeof(p_pkt->len))) {
-    /* Ignore the invalid AV/C command frame */
-    p_drop_msg = "dropped - too long AV/C cmd frame size";
+                         p_pkt->len > AVRC_PACKET_LEN)) {
+    android_errorWriteLog(0x534e4554, "177611958");
+    AVRC_TRACE_WARNING("%s: Command length %d too long: must be at most %d",
+                       __func__, p_pkt->len, AVRC_PACKET_LEN);
     osi_free(p_pkt);
     return;
   }
@@ -780,6 +789,15 @@ static void avrc_msg_cback(uint8_t handle, uint8_t label, uint8_t cr,
         p_msg->p_vendor_data = p_data;
         p_msg->vendor_len = p_pkt->len - (p_data - p_begin);
 
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+        int parameter_len = (p_msg->p_vendor_data[2] << 8) + p_msg->p_vendor_data[3];
+        AVRC_TRACE_WARNING("%s p_msg parameter_len = %d", __func__, parameter_len);
+        if((parameter_len == 0) && (msg.hdr.ctype == 0x03)) {
+          AVRC_TRACE_WARNING("%s drop message which parameter length 0", __func__);
+          drop = true;
+          break;
+        }
+#endif
         uint8_t drop_code = 0;
         if (p_msg->company_id == AVRC_CO_METADATA) {
           /* Validate length for metadata message */
@@ -921,7 +939,7 @@ static BT_HDR* avrc_pass_msg(tAVRC_MSG_PASS* p_msg) {
   CHECK(p_msg != NULL);
   CHECK(AVRC_CMD_BUF_SIZE > (AVRC_MIN_CMD_LEN + p_msg->pass_len));
 
-  BT_HDR* p_cmd = (BT_HDR*)osi_malloc(AVRC_CMD_BUF_SIZE);
+  BT_HDR* p_cmd = (BT_HDR*)osi_calloc(AVRC_CMD_BUF_SIZE);
   p_cmd->offset = AVCT_MSG_OFFSET;
   p_cmd->layer_specific = AVCT_DATA_CTRL;
 
@@ -1043,6 +1061,10 @@ uint16_t AVRC_Open(uint8_t* p_handle, tAVRC_CONN_CB* p_ccb,
 uint16_t AVRC_Close(uint8_t handle) {
   AVRC_TRACE_DEBUG("%s handle:%d", __func__, handle);
   avrc_flush_cmd_q(handle);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  alarm_free(avrc_cb.ccb_int[handle].tle);
+  avrc_cb.ccb_int[handle].tle = NULL;
+#endif
   return AVCT_RemoveConn(handle);
 }
 
@@ -1184,7 +1206,7 @@ uint16_t AVRC_MsgReq(uint8_t handle, uint8_t label, uint8_t ctype,
     if (p_pkt->len > AVRC_MAX_CTRL_DATA_LEN) {
       int offset_len = MAX(AVCT_MSG_OFFSET, p_pkt->offset);
       BT_HDR* p_pkt_new =
-          (BT_HDR*)osi_malloc(AVRC_PACKET_LEN + offset_len + BT_HDR_SIZE);
+          (BT_HDR*)osi_calloc(AVRC_PACKET_LEN + offset_len + BT_HDR_SIZE);
       if (p_start != NULL) {
         p_fcb->frag_enabled = true;
         p_fcb->p_fmsg = p_pkt;

@@ -40,6 +40,10 @@
 #include "osi/include/osi.h"
 #include "sdp_api.h"
 #include "sdpint.h"
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#include "vnd_unisoc/include/btdevice_target.h"
+#include "vnd_unisoc/include/btdevice.h"
+#endif
 
 #if (SDP_SERVER_ENABLED == TRUE)
 
@@ -124,9 +128,11 @@ void sdp_server_handle_client_req(tCONN_CB* p_ccb, BT_HDR* p_msg) {
 
   if (p_req + sizeof(pdu_id) + sizeof(trans_num) > p_req_end) {
     android_errorWriteLog(0x534e4554, "69384124");
+    android_errorWriteLog(0x534e4554, "169342531");
     trans_num = 0;
     sdpu_build_n_send_error(p_ccb, trans_num, SDP_INVALID_REQ_SYNTAX,
                             SDP_TEXT_BAD_HEADER);
+    return;
   }
 
   /* The first byte in the message is the pdu type */
@@ -137,8 +143,10 @@ void sdp_server_handle_client_req(tCONN_CB* p_ccb, BT_HDR* p_msg) {
 
   if (p_req + sizeof(param_len) > p_req_end) {
     android_errorWriteLog(0x534e4554, "69384124");
+    android_errorWriteLog(0x534e4554, "169342531");
     sdpu_build_n_send_error(p_ccb, trans_num, SDP_INVALID_REQ_SYNTAX,
                             SDP_TEXT_BAD_HEADER);
+    return;
   }
 
   BE_STREAM_TO_UINT16(param_len, p_req);
@@ -593,6 +601,10 @@ static void process_service_search_attr_req(tCONN_CB* p_ccb, uint16_t trans_num,
     android_errorWriteLog(0x534e4554, "68817966");
     return;
   }
+
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  btdevice_parse_services(&uid_seq);
+#endif
 
   /* Free and reallocate buffer */
   osi_free(p_ccb->rsp_list);

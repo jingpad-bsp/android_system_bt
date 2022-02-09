@@ -339,3 +339,6 @@ extern void bta_hf_client_svc_conn_open(tBTA_HF_CLIENT_DATA* p_data);
 /* Commands handling functions */
 extern void bta_hf_client_dial(tBTA_HF_CLIENT_DATA* p_data);
 extern void bta_hf_client_send_at_cmd(tBTA_HF_CLIENT_DATA* p_data);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+void bta_hf_client_sco_event_ex(tBTA_HF_CLIENT_CB* client_cb, uint8_t event);
+#endif

@@ -552,4 +552,7 @@ extern tBTA_DM_PEER_DEVICE* bta_dm_find_peer_device(
 void bta_dm_eir_update_uuid(uint16_t uuid16, bool adding);
 
 extern void bta_dm_remove_all_acl(const tBTA_DM_LINK_TYPE);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+bool bta_dm_get_sco_active_state(void);
+#endif
 #endif /* BTA_DM_INT_H */

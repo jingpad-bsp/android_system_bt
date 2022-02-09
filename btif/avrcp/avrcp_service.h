@@ -97,5 +97,13 @@ class AvrcpService : public MediaCallbacks {
 }  // namespace bluetooth
 
 inline bool is_new_avrcp_enabled() {
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  return false;
+#else
   return osi_property_get_bool("persist.bluetooth.enablenewavrcp", true);
+#endif
+#else
+  return osi_property_get_bool("persist.bluetooth.enablenewavrcp", true);
+#endif
 }

@@ -54,6 +54,12 @@
 #endif
 #include "btif/include/btif_av.h"
 #include "btif/include/btif_hf.h"
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#include "btdevice.h"
+#endif
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+#include "bta_dm_int.h"
+#endif
 
 /*****************************************************************************
  *  Constants
@@ -306,7 +312,18 @@ static void notify_start_failed(tBTA_AV_SCB* p_scb) {
 
   tBTA_AV bta_av_data;
   bta_av_data.start = start;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  if (p_scb->tsep == AVDT_TSEP_SRC)
+    (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+  else
+    (*bta_av_cb.p_sink_cback)(BTA_AV_START_EVT, &bta_av_data);
+#else
   (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+#endif
+#else
+  (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+#endif
 }
 
 /*******************************************************************************
@@ -358,6 +375,35 @@ static bool bta_av_next_getcap(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   else if (uuid_int == UUID_SERVCLASS_AUDIO_SINK)
     sep_requested = AVDT_TSEP_SRC;
 
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  for (i = p_scb->sep_info_idx; i < p_scb->num_seps; i++) {
+    /* steam not in use, is a sink, and is the right media type (audio/video) */
+    if ((!p_scb->sep_info[i].in_use) &&
+        (p_scb->sep_info[i].tsep == sep_requested
+#if (BTA_AV_SINK_INCLUDED == TRUE)
+        || p_scb->sep_info[i].tsep == AVDT_TSEP_SNK
+#endif
+        ) &&
+        (p_scb->sep_info[i].media_type == p_scb->media_type)) {
+      p_scb->sep_info_idx = i;
+
+      /* we got a stream; get its capabilities */
+      bool get_all_cap = (p_scb->AvdtpVersion() >= AVDT_VERSION_1_3) &&
+                         (A2DP_GetAvdtpVersion() >= AVDT_VERSION_1_3);
+      AVDT_GetCapReq(p_scb->PeerAddress(), p_scb->hdi, p_scb->sep_info[i].seid,
+                     &p_scb->peer_cap, &bta_av_proc_stream_evt, get_all_cap);
+      sent_cmd = true;
+      break;
+    }
+  }
+
+  /* if no streams available then stream open fails */
+  if (!sent_cmd && p_scb->num_seps >0 && p_scb->sep_info_idx == 0) {
+    APPL_TRACE_ERROR("%s: BTA_AV_STR_GETCAP_FAIL_EVT: peer_addr=%s", __func__,
+                     p_scb->PeerAddress().ToString().c_str());
+    bta_av_ssm_execute(p_scb, BTA_AV_STR_GETCAP_FAIL_EVT, p_data);
+  }
+#else
   for (i = p_scb->sep_info_idx; i < p_scb->num_seps; i++) {
     /* steam not in use, is a sink, and is the right media type (audio/video) */
     if ((!p_scb->sep_info[i].in_use) &&
@@ -381,6 +427,7 @@ static bool bta_av_next_getcap(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
                      p_scb->PeerAddress().ToString().c_str());
     bta_av_ssm_execute(p_scb, BTA_AV_STR_GETCAP_FAIL_EVT, p_data);
   }
+#endif
 
   return sent_cmd;
 }
@@ -696,7 +743,18 @@ void bta_av_role_res(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
         start.initiator = initiator;
         tBTA_AV bta_av_data;
         bta_av_data.start = start;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+        if (p_scb->tsep == AVDT_TSEP_SRC)
+          (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+        else
+          (*bta_av_cb.p_sink_cback)(BTA_AV_START_EVT, &bta_av_data);
+#else
         (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+#endif
+#else
+        (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+#endif
       } else {
         bta_av_start_ok(p_scb, p_data);
       }
@@ -721,7 +779,19 @@ void bta_av_role_res(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
         }
         tBTA_AV bta_av_data;
         bta_av_data.open = av_open;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+        APPL_TRACE_WARNING("%s p_scb %p tsep %d", __func__, p_scb, p_scb->tsep);
+        if (p_scb->tsep == AVDT_TSEP_SRC)
+          (*bta_av_cb.p_cback)(BTA_AV_OPEN_EVT, &bta_av_data);
+        else
+          (*bta_av_cb.p_sink_cback)(BTA_AV_OPEN_EVT, &bta_av_data);
+#else
         (*bta_av_cb.p_cback)(BTA_AV_OPEN_EVT, &bta_av_data);
+#endif
+#else
+        (*bta_av_cb.p_cback)(BTA_AV_OPEN_EVT, &bta_av_data);
+#endif
       } else {
         /* Continue av open process */
         p_scb->q_info.open.switch_res = BTA_AV_RS_DONE;
@@ -1269,7 +1339,19 @@ void bta_av_str_opened(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
     tBTA_AV bta_av_data;
     bta_av_data.open = open;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    APPL_TRACE_WARNING("%s p_scb %p tsep %d", __func__, p_scb, p_scb->tsep);
+    if (p_scb->tsep == AVDT_TSEP_SRC)
+      (*bta_av_cb.p_cback)(BTA_AV_OPEN_EVT, &bta_av_data);
+    else
+      (*bta_av_cb.p_sink_cback)(BTA_AV_OPEN_EVT, &bta_av_data);
+#else
     (*bta_av_cb.p_cback)(BTA_AV_OPEN_EVT, &bta_av_data);
+#endif
+#else
+    (*bta_av_cb.p_cback)(BTA_AV_OPEN_EVT, &bta_av_data);
+#endif
     if (open.starting) {
       bta_av_ssm_execute(p_scb, BTA_AV_AP_START_EVT, NULL);
     }
@@ -1305,7 +1387,18 @@ void bta_av_security_ind(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
     tBTA_AV bta_av_data;
     bta_av_data.protect_req = protect_req;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    if (p_scb->tsep == AVDT_TSEP_SRC)
+      (*bta_av_cb.p_cback)(BTA_AV_PROTECT_REQ_EVT, &bta_av_data);
+    else
+      (*bta_av_cb.p_sink_cback)(BTA_AV_PROTECT_REQ_EVT, &bta_av_data);
+#else
     (*bta_av_cb.p_cback)(BTA_AV_PROTECT_REQ_EVT, &bta_av_data);
+#endif
+#else
+    (*bta_av_cb.p_cback)(BTA_AV_PROTECT_REQ_EVT, &bta_av_data);
+#endif
   }
   /* app doesn't support security indication; respond with failure */
   else {
@@ -1334,7 +1427,18 @@ void bta_av_security_cfm(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
     tBTA_AV bta_av_data;
     bta_av_data.protect_rsp = protect_rsp;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    if (p_scb->tsep == AVDT_TSEP_SRC)
+      (*bta_av_cb.p_cback)(BTA_AV_PROTECT_RSP_EVT, &bta_av_data);
+    else
+      (*bta_av_cb.p_sink_cback)(BTA_AV_PROTECT_RSP_EVT, &bta_av_data);
+#else
     (*bta_av_cb.p_cback)(BTA_AV_PROTECT_RSP_EVT, &bta_av_data);
+#endif
+#else
+    (*bta_av_cb.p_cback)(BTA_AV_PROTECT_RSP_EVT, &bta_av_data);
+#endif
   }
 }
 
@@ -1672,7 +1776,19 @@ void bta_av_open_failed(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
     tBTA_AV bta_av_data;
     bta_av_data.open = open;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    APPL_TRACE_ERROR(" %s p_scb %p tsep %d", __func__, p_scb, p_scb->tsep);
+    if (p_scb->tsep == AVDT_TSEP_SRC)
+      (*bta_av_cb.p_cback)(BTA_AV_OPEN_EVT, &bta_av_data);
+    else
+      (*bta_av_cb.p_sink_cback)(BTA_AV_OPEN_EVT, &bta_av_data);
+#else
     (*bta_av_cb.p_cback)(BTA_AV_OPEN_EVT, &bta_av_data);
+#endif
+#else
+    (*bta_av_cb.p_cback)(BTA_AV_OPEN_EVT, &bta_av_data);
+#endif
   } else {
     AVDT_DisconnectReq(p_scb->PeerAddress(), &bta_av_proc_stream_evt);
   }
@@ -1787,7 +1903,18 @@ void bta_av_setconfig_rej(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
   tBTA_AV bta_av_data;
   bta_av_data.reject = reject;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  if (p_scb->tsep == AVDT_TSEP_SRC)
+    (*bta_av_cb.p_cback)(BTA_AV_REJECT_EVT, &bta_av_data);
+  else
+    (*bta_av_cb.p_sink_cback)(BTA_AV_REJECT_EVT, &bta_av_data);
+#else
   (*bta_av_cb.p_cback)(BTA_AV_REJECT_EVT, &bta_av_data);
+#endif
+#else
+  (*bta_av_cb.p_cback)(BTA_AV_REJECT_EVT, &bta_av_data);
+#endif
 }
 
 /*******************************************************************************
@@ -1976,7 +2103,18 @@ void bta_av_str_stopped(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
       suspend_rsp.initiator = true;
       tBTA_AV bta_av_data;
       bta_av_data.suspend = suspend_rsp;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+      if (p_scb->tsep == AVDT_TSEP_SRC)
+        (*bta_av_cb.p_cback)(BTA_AV_SUSPEND_EVT, &bta_av_data);
+      else
+        (*bta_av_cb.p_sink_cback)(BTA_AV_SUSPEND_EVT, &bta_av_data);
+#else
       (*bta_av_cb.p_cback)(BTA_AV_SUSPEND_EVT, &bta_av_data);
+#endif
+#else
+      (*bta_av_cb.p_cback)(BTA_AV_SUSPEND_EVT, &bta_av_data);
+#endif
     }
   } else {
     suspend_rsp.status = BTA_AV_SUCCESS;
@@ -1990,7 +2128,18 @@ void bta_av_str_stopped(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
         (p_data && p_data->api_stop.reconfig_stop)) {
       tBTA_AV bta_av_data;
       bta_av_data.suspend = suspend_rsp;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+      if (p_scb->tsep == AVDT_TSEP_SRC)(*bta_av_cb.p_cback)
+        (BTA_AV_STOP_EVT, &bta_av_data);
+      else
+        (*bta_av_cb.p_sink_cback)(BTA_AV_STOP_EVT, &bta_av_data);
+#else
       (*bta_av_cb.p_cback)(BTA_AV_STOP_EVT, &bta_av_data);
+#endif
+#else
+      (*bta_av_cb.p_cback)(BTA_AV_STOP_EVT, &bta_av_data);
+#endif
     }
   }
 }
@@ -2280,7 +2429,18 @@ void bta_av_start_ok(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
       start.initiator = initiator;
       tBTA_AV bta_av_data;
       bta_av_data.start = start;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+      if (p_scb->tsep == AVDT_TSEP_SRC)
+        (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+      else
+        (*bta_av_cb.p_sink_cback)(BTA_AV_START_EVT, &bta_av_data);
+#else
       (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+#endif
+#else
+      (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+#endif
       return;
     }
   }
@@ -2387,7 +2547,18 @@ void bta_av_start_ok(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
     start.hndl = p_scb->hndl;
     tBTA_AV bta_av_data;
     bta_av_data.start = start;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    if (p_scb->tsep == AVDT_TSEP_SRC)
+      (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+    else
+      (*bta_av_cb.p_sink_cback)(BTA_AV_START_EVT, &bta_av_data);
+#else
     (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+#endif
+#else
+    (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+#endif
 
     if (suspend) {
       tBTA_AV_API_STOP stop;
@@ -2477,7 +2648,19 @@ void bta_av_str_closed(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
     bta_sys_conn_close(BTA_ID_AV, p_scb->app_id, p_scb->PeerAddress());
     bta_av_cleanup(p_scb, p_data);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    APPL_TRACE_ERROR(" %s p_scb %p tsep %d", __func__, p_scb, p_scb->tsep);
+    if (p_scb->tsep == AVDT_TSEP_SRC)
+      (*bta_av_cb.p_cback)(event, &data);
+    else
+      (*bta_av_cb.p_sink_cback)(event, &data);
+#else
     (*bta_av_cb.p_cback)(event, &data);
+#endif
+#else
+    (*bta_av_cb.p_cback)(event, &data);
+#endif
   } else {
     /* do stop if we were started */
     if (p_scb->co_started) {
@@ -2492,7 +2675,18 @@ void bta_av_str_closed(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 
       bta_sys_conn_close(BTA_ID_AV, p_scb->app_id, p_scb->PeerAddress());
       bta_av_cleanup(p_scb, p_data);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+      if (p_scb->tsep == AVDT_TSEP_SRC)
+        (*bta_av_cb.p_cback)(event, &data);
+      else
+        (*bta_av_cb.p_sink_cback)(event, &data);
+#else
       (*bta_av_cb.p_cback)(event, &data);
+#endif
+#else
+      (*bta_av_cb.p_cback)(event, &data);
+#endif
     }
   }
 }
@@ -2591,7 +2785,18 @@ void bta_av_suspend_cfm(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
     suspend_rsp.initiator = p_data->str_msg.initiator;
     tBTA_AV bta_av_data;
     bta_av_data.suspend = suspend_rsp;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    if (p_scb->tsep == AVDT_TSEP_SRC)
+      (*bta_av_cb.p_cback)(BTA_AV_SUSPEND_EVT, &bta_av_data);
+    else
+      (*bta_av_cb.p_sink_cback)(BTA_AV_SUSPEND_EVT, &bta_av_data);
+#else
     (*bta_av_cb.p_cback)(BTA_AV_SUSPEND_EVT, &bta_av_data);
+#endif
+#else
+    (*bta_av_cb.p_cback)(BTA_AV_SUSPEND_EVT, &bta_av_data);
+#endif
   }
 }
 
@@ -2636,7 +2841,18 @@ void bta_av_rcfg_str_ok(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
     reconfig.hndl = p_scb->hndl;
     tBTA_AV bta_av_data;
     bta_av_data.reconfig = reconfig;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    if (p_scb->tsep == AVDT_TSEP_SRC)
+      (*bta_av_cb.p_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+    else
+      (*bta_av_cb.p_sink_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+#else
     (*bta_av_cb.p_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+#endif
+#else
+    (*bta_av_cb.p_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+#endif
   }
 }
 
@@ -2663,7 +2879,18 @@ void bta_av_rcfg_failed(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
     reconfig.hndl = p_scb->hndl;
     tBTA_AV bta_av_data;
     bta_av_data.reconfig = reconfig;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    if (p_scb->tsep == AVDT_TSEP_SRC)
+      (*bta_av_cb.p_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+    else
+      (*bta_av_cb.p_sink_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+#else
     (*bta_av_cb.p_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+#endif
+#else
+    (*bta_av_cb.p_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+#endif
     /* go to closing state */
     bta_av_ssm_execute(p_scb, BTA_AV_API_CLOSE_EVT, NULL);
   } else {
@@ -2724,7 +2951,18 @@ void bta_av_rcfg_discntd(tBTA_AV_SCB* p_scb, UNUSED_ATTR tBTA_AV_DATA* p_data) {
     reconfig.hndl = p_scb->hndl;
     tBTA_AV bta_av_data;
     bta_av_data.reconfig = reconfig;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    if (p_scb->tsep == AVDT_TSEP_SRC)
+      (*bta_av_cb.p_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+    else
+      (*bta_av_cb.p_sink_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+#else
     (*bta_av_cb.p_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+#endif
+#else
+    (*bta_av_cb.p_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+#endif
     /* report close event & go to init state */
     bta_av_ssm_execute(p_scb, BTA_AV_STR_DISC_FAIL_EVT, NULL);
   } else {
@@ -2757,7 +2995,18 @@ void bta_av_suspend_cont(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
       reconfig.status = BTA_AV_FAIL;
       tBTA_AV bta_av_data;
       bta_av_data.reconfig = reconfig;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+      if (p_scb->tsep == AVDT_TSEP_SRC)
+        (*bta_av_cb.p_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+      else
+        (*bta_av_cb.p_sink_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+#else
       (*bta_av_cb.p_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+#endif
+#else
+      (*bta_av_cb.p_cback)(BTA_AV_RECONFIG_EVT, &bta_av_data);
+#endif
       APPL_TRACE_ERROR("%s: BTA_AV_STR_DISC_FAIL_EVT: peer_addr=%s", __func__,
                        p_scb->PeerAddress().ToString().c_str());
       bta_av_ssm_execute(p_scb, BTA_AV_STR_DISC_FAIL_EVT, NULL);
@@ -2980,7 +3229,18 @@ void bta_av_open_rc(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
       bta_av_cb.rs_idx = 0;
       tBTA_AV bta_av_data;
       bta_av_data.start = start;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+      if (p_scb->tsep == AVDT_TSEP_SRC)
+        (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+      else
+        (*bta_av_cb.p_sink_cback)(BTA_AV_START_EVT, &bta_av_data);
+#else
       (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+#endif
+#else
+      (*bta_av_cb.p_cback)(BTA_AV_START_EVT, &bta_av_data);
+#endif
     } else {
       /* role switch is done. continue to start streaming */
       bta_av_cb.rs_idx = 0;
@@ -3004,7 +3264,15 @@ void bta_av_open_rc(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
       }
     } else {
       /* use main SM for AVRC SDP activities */
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+      if (p_scb->tsep == AVDT_TSEP_SRC) {
+#else
       if (is_new_avrcp_enabled()) {
+#endif
+#else
+      if (is_new_avrcp_enabled()) {
+#endif
         APPL_TRACE_WARNING("%s: Using the new AVRCP Profile", __func__);
         bluetooth::avrcp::AvrcpService::Get()->ConnectDevice(
             p_scb->PeerAddress());
@@ -3056,14 +3324,14 @@ void bta_av_open_at_inc(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
 }
 
 void offload_vendor_callback(tBTM_VSC_CMPL* param) {
-  uint8_t status = 0;
+  tBTA_AV value{0};
   uint8_t sub_opcode = 0;
   if (param->param_len) {
     APPL_TRACE_DEBUG("%s: param_len = %d status = %d", __func__,
                      param->param_len, param->p_param_buf[0]);
-    status = param->p_param_buf[0];
+    value.status = param->p_param_buf[0];
   }
-  if (status == 0) {
+  if (value.status == 0) {
     sub_opcode = param->p_param_buf[1];
     APPL_TRACE_DEBUG("%s: subopcode = %d", __func__, sub_opcode);
     switch (sub_opcode) {
@@ -3071,7 +3339,18 @@ void offload_vendor_callback(tBTM_VSC_CMPL* param) {
         APPL_TRACE_DEBUG("%s: VS_HCI_STOP_A2DP_MEDIA successful", __func__);
         break;
       case VS_HCI_A2DP_OFFLOAD_START:
-        (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, (tBTA_AV*)&status);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+        if (btdevice_get_current_tsep() == AVDT_TSEP_SRC)
+          (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &value);
+        else
+          (*bta_av_cb.p_sink_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &value);
+#else
+        (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &value);
+#endif
+#else
+        (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &value);
+#endif
         break;
       default:
         break;
@@ -3080,7 +3359,20 @@ void offload_vendor_callback(tBTM_VSC_CMPL* param) {
     APPL_TRACE_DEBUG("%s: Offload failed for subopcode= %d", __func__,
                      sub_opcode);
     if (param->opcode != VS_HCI_A2DP_OFFLOAD_STOP)
-      (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, (tBTA_AV*)&status);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    {
+      if (btdevice_get_current_tsep() == AVDT_TSEP_SRC)
+        (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &value);
+      else
+        (*bta_av_cb.p_sink_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &value);
+    }
+#else
+      (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &value);
+#endif
+#else
+      (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &value);
+#endif
   }
 }
 
@@ -3105,16 +3397,30 @@ void bta_av_vendor_offload_start(tBTA_AV_SCB* p_scb,
   ARRAY_TO_STREAM(p_param, offload_start->codec_info,
                   (int8_t)sizeof(offload_start->codec_info));
   p_scb->offload_started = true;
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  if (!bta_dm_get_sco_active_state()) {
+    BTM_VendorSpecificCommand(HCI_CONTROLLER_A2DP_OPCODE_OCF, p_param - param,
+                              param, offload_vendor_callback);
+  }
+#else
   BTM_VendorSpecificCommand(HCI_CONTROLLER_A2DP_OPCODE_OCF, p_param - param,
                             param, offload_vendor_callback);
+#endif
 }
 
 void bta_av_vendor_offload_stop() {
   uint8_t param[sizeof(tBT_A2DP_OFFLOAD)];
   APPL_TRACE_DEBUG("%s", __func__);
   param[0] = VS_HCI_A2DP_OFFLOAD_STOP;
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+  if (!bta_dm_get_sco_active_state()) {
+    BTM_VendorSpecificCommand(HCI_CONTROLLER_A2DP_OPCODE_OCF, 1, param,
+                              offload_vendor_callback);
+  }
+#else
   BTM_VendorSpecificCommand(HCI_CONTROLLER_A2DP_OPCODE_OCF, 1, param,
                             offload_vendor_callback);
+#endif
 }
 /*******************************************************************************
  *
@@ -3145,7 +3451,18 @@ void bta_av_offload_req(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   if (status != BTA_AV_SUCCESS) {
     tBTA_AV bta_av_data;
     bta_av_data.status = status;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    if (btdevice_get_current_tsep() == AVDT_TSEP_SRC)
+      (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &bta_av_data);
+    else
+      (*bta_av_cb.p_sink_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &bta_av_data);
+#else
     (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &bta_av_data);
+#endif
+#else
+    (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &bta_av_data);
+#endif
   }
   /* TODO(eisenbach): RE-IMPLEMENT USING VSC OR HAL EXTENSION
   else if (bta_av_cb.audio_open_cnt == 1 &&
@@ -3209,7 +3526,18 @@ void bta_av_offload_rsp(tBTA_AV_SCB* p_scb, tBTA_AV_DATA* p_data) {
   p_scb->offload_start_pending = false;
   tBTA_AV bta_av_data;
   bta_av_data.status = status;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  if (btdevice_get_current_tsep() == AVDT_TSEP_SRC)
+    (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &bta_av_data);
+  else
+    (*bta_av_cb.p_sink_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &bta_av_data);
+#else
   (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &bta_av_data);
+#endif
+#else
+  (*bta_av_cb.p_cback)(BTA_AV_OFFLOAD_START_RSP_EVT, &bta_av_data);
+#endif
 }
 
 static void bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb,
@@ -3227,7 +3555,12 @@ static void bta_av_offload_codec_builder(tBTA_AV_SCB* p_scb,
           BTIF_A2DP_MAX_BITPOOL_MQ) {
         APPL_TRACE_WARNING("%s: Restricting streaming MTU size for MQ Bitpool",
                            __func__);
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+        APPL_TRACE_WARNING("%s:not Restrict stream MTU size for unisoc offload",
+                           __func__);
+#else
         mtu = MAX_2MBPS_AVDTP_MTU;
+#endif
       }
       break;
     case BTAV_A2DP_CODEC_INDEX_SOURCE_AAC:

@@ -26,6 +26,10 @@
 #include "btif_av_co.h"
 #include "btif_hf.h"
 #include "osi/include/properties.h"
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+//add for cleanup peer address protect.
+extern std::mutex a2dp_src_peer_lock;
+#endif
 
 namespace {
 
@@ -122,9 +126,16 @@ class A2dpTransport : public ::bluetooth::audio::IBluetoothTransportInstance {
     }
     // Local suspend
     if (btif_av_stream_started_ready()) {
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+      LOG(INFO) << __func__ << ": lock a2dp_src_peer_lock.";
+      std::lock_guard<std::mutex> lock(a2dp_src_peer_lock);
+#endif
       LOG(INFO) << __func__ << ": accepted";
       a2dp_pending_cmd_ = A2DP_CTRL_CMD_SUSPEND;
       btif_av_stream_suspend();
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+      LOG(INFO) << __func__ << ": unlock a2dp_src_peer_lock.";
+#endif
       return BluetoothAudioCtrlAck::PENDING;
     }
     /* If we are not in started state, just ack back ok and let
@@ -284,6 +295,21 @@ ChannelMode a2dp_codec_to_hal_channel_mode(
 
 bool a2dp_get_selected_hal_codec_config(CodecConfiguration* codec_config) {
   A2dpCodecConfig* a2dp_codec_configs = bta_av_get_a2dp_current_codec();
+  
+#if (defined(SPRD_FEATURE_A2DPOFFLOAD) && SPRD_FEATURE_A2DPOFFLOAD == TRUE)
+
+  bool a2dp_offload_enabled_sprd_for_hal;
+  char value_sup[PROPERTY_VALUE_MAX] = {'\0'};
+  char value_dis[PROPERTY_VALUE_MAX] = {'\0'};
+  osi_property_get("ro.bluetooth.a2dp_offload.supported", value_sup, "false");
+  osi_property_get("persist.bluetooth.a2dp_offload.disabled", value_dis,
+				   "false");
+  a2dp_offload_enabled_sprd_for_hal =
+	  (strcmp(value_sup, "true") == 0) && (strcmp(value_dis, "false") == 0);
+
+
+#endif
+  
   if (a2dp_codec_configs == nullptr) {
     LOG(WARNING) << __func__ << ": failure to get A2DP codec config";
     *codec_config = kInvalidCodecConfiguration;
@@ -325,8 +351,13 @@ bool a2dp_get_selected_hal_codec_config(CodecConfiguration* codec_config) {
           sbc_config.channelMode = SbcChannelMode::UNKNOWN;
           return false;
       }
-      uint8_t block_length =
-          a2dp_offload.codec_info[0] & A2DP_SBC_IE_BLOCKS_MSK;
+      uint8_t block_length =0;
+#if (defined(SPRD_FEATURE_A2DPOFFLOAD) && SPRD_FEATURE_A2DPOFFLOAD == TRUE)      
+          if(!a2dp_offload_enabled_sprd_for_hal)    
+             block_length = a2dp_offload.codec_info[0] & A2DP_SBC_IE_BLOCKS_MSK;
+          else
+  	         block_length = a2dp_offload.codec_info[1] & A2DP_SBC_IE_BLOCKS_MSK;
+#endif 
       switch (block_length) {
         case A2DP_SBC_IE_BLOCKS_4:
           sbc_config.blockLength = SbcBlockLength::BLOCKS_4;
@@ -345,7 +376,13 @@ bool a2dp_get_selected_hal_codec_config(CodecConfiguration* codec_config) {
                      << ": Unknown SBC block_length=" << block_length;
           return false;
       }
-      uint8_t sub_bands = a2dp_offload.codec_info[0] & A2DP_SBC_IE_SUBBAND_MSK;
+	  uint8_t sub_bands = 0;
+#if (defined(SPRD_FEATURE_A2DPOFFLOAD) && SPRD_FEATURE_A2DPOFFLOAD == TRUE) 
+	  if(!a2dp_offload_enabled_sprd_for_hal)  
+      	sub_bands = a2dp_offload.codec_info[0] & A2DP_SBC_IE_SUBBAND_MSK;
+	  else
+	  	sub_bands = a2dp_offload.codec_info[1] & A2DP_SBC_IE_SUBBAND_MSK;
+#endif
       switch (sub_bands) {
         case A2DP_SBC_IE_SUBBAND_4:
           sbc_config.numSubbands = SbcNumSubbands::SUBBAND_4;
@@ -357,8 +394,14 @@ bool a2dp_get_selected_hal_codec_config(CodecConfiguration* codec_config) {
           LOG(ERROR) << __func__ << ": Unknown SBC Subbands=" << sub_bands;
           return false;
       }
-      uint8_t alloc_method =
-          a2dp_offload.codec_info[0] & A2DP_SBC_IE_ALLOC_MD_MSK;
+	  
+      uint8_t alloc_method = 0;
+#if (defined(SPRD_FEATURE_A2DPOFFLOAD) && SPRD_FEATURE_A2DPOFFLOAD == TRUE) 
+          if(!a2dp_offload_enabled_sprd_for_hal)  
+              alloc_method = a2dp_offload.codec_info[0] & A2DP_SBC_IE_ALLOC_MD_MSK;
+		  else
+		  	  alloc_method = a2dp_offload.codec_info[1] & A2DP_SBC_IE_ALLOC_MD_MSK;
+#endif
       switch (alloc_method) {
         case A2DP_SBC_IE_ALLOC_MD_S:
           sbc_config.allocMethod = SbcAllocMethod::ALLOC_MD_S;
@@ -371,7 +414,12 @@ bool a2dp_get_selected_hal_codec_config(CodecConfiguration* codec_config) {
                      << ": Unknown SBC alloc_method=" << alloc_method;
           return false;
       }
-      sbc_config.minBitpool = a2dp_offload.codec_info[1];
+#if (defined(SPRD_FEATURE_A2DPOFFLOAD) && SPRD_FEATURE_A2DPOFFLOAD == TRUE) 
+	  if(!a2dp_offload_enabled_sprd_for_hal)     
+      	sbc_config.minBitpool = a2dp_offload.codec_info[1];
+	  else
+	  	sbc_config.minBitpool = a2dp_offload.codec_info[2];
+#endif
       sbc_config.maxBitpool = a2dp_offload.codec_info[2];
       sbc_config.bitsPerSample =
           a2dp_codec_to_hal_bits_per_sample(current_codec);
@@ -605,6 +653,7 @@ bool init(bluetooth::common::MessageLoopThread* message_loop) {
     session_type = SessionType::A2DP_SOFTWARE_ENCODING_DATAPATH;
   }
   a2dp_sink = new A2dpTransport(session_type);
+  //get provider in that
   a2dp_hal_clientif = new bluetooth::audio::BluetoothAudioClientInterface(
       a2dp_sink, message_loop);
   if (!a2dp_hal_clientif->IsValid()) {
@@ -705,6 +754,7 @@ void ack_stream_suspended(const tA2DP_CTRL_ACK& ack) {
   } else {
     LOG(WARNING) << __func__ << ": pending=" << pending_cmd
                  << " ignore result=" << ctrl_ack;
+	 //for peer rsp suspend evt for a long time ,1164383 ,a2dp don't know tx timer stopped
     return;
   }
   if (ctrl_ack != bluetooth::audio::BluetoothAudioCtrlAck::PENDING) {

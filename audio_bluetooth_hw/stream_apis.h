@@ -85,3 +85,8 @@ int adev_open_input_stream(struct audio_hw_device* dev,
 
 void adev_close_input_stream(struct audio_hw_device* dev,
                              struct audio_stream_in* in);
+
+#ifdef SPRD_FEATURE_A2DPOFFLOAD
+extern bool a2dp_offload_enabled_sprd_for_hal;							 
+#endif
+

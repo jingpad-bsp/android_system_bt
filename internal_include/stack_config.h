@@ -23,6 +23,12 @@
 #include "module.h"
 #include "osi/include/config.h"
 
+#ifdef HAS_BDROID_BUILDCFG
+#include "bdroid_buildcfg.h"
+#else
+//#error "no HAS_BDROID_BUILDCFG"
+#endif
+
 static const char STACK_CONFIG_MODULE[] = "stack_config_module";
 
 typedef struct {
@@ -34,6 +40,9 @@ typedef struct {
   const std::string* (*get_pts_smp_options)(void);
   int (*get_pts_smp_failure_case)(void);
   config_t* (*get_all)(void);
+#if (defined(SPRD_FEATURE_SLOG) && SPRD_FEATURE_SLOG == TRUE)
+  config_t* (*get_debug_config)(void);
+#endif
 } stack_config_t;
 
 const stack_config_t* stack_config_get_interface(void);

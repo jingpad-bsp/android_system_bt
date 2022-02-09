@@ -28,6 +28,9 @@
 #include "osi/include/log.h"
 #include "osi/include/osi.h"
 #include "port_api.h"
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#include "device/include/interop.h"
+#endif
 
 /* Uncomment to enable AT traffic dumping */
 /* #define BTA_HF_CLIENT_AT_DUMP 1 */
@@ -102,6 +105,11 @@ bool service_availability = true;
 /* helper functions for handling AT commands queueing */
 
 static void bta_hf_client_handle_ok(tBTA_HF_CLIENT_CB* client_cb);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+static void bta_hf_client_handle_error(tBTA_HF_CLIENT_CB* client_cb,
+                                       tBTA_HF_CLIENT_AT_RESULT_TYPE type,
+                                       uint16_t cme);
+#endif
 
 static void bta_hf_client_clear_queued_at(tBTA_HF_CLIENT_CB* client_cb) {
   tBTA_HF_CLIENT_AT_QCMD* cur = client_cb->at_cb.queued_cmd;
@@ -147,6 +155,13 @@ static void bta_hf_client_at_resp_timer_cback(void* data) {
              "%s: timed out waiting for AT+CNUM response; spoofing OK.",
              __func__);
     bta_hf_client_handle_ok(client_cb);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  } else if (client_cb->at_cb.current_cmd == BTA_HF_CLIENT_AT_CLCC) {
+    LOG_INFO(LOG_TAG,
+             "%s: timed out waiting for AT+CLCC response; spoofing ERROR.",
+             __func__);
+    bta_hf_client_handle_error(client_cb, BTA_HF_CLIENT_AT_RESULT_ERROR, 0);
+#endif
   } else {
     APPL_TRACE_ERROR("HFPClient: AT response timeout, disconnecting");
 
@@ -179,6 +194,18 @@ static void bta_hf_client_send_at(tBTA_HF_CLIENT_CB* client_cb,
 #endif
 
     client_cb->at_cb.current_cmd = cmd;
+
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  if ((interop_match_addr(INTEROP_HF_CLIENT_AT_CMD,
+                          &client_cb->peer_addr) == true)
+      && (cmd == BTA_HF_CLIENT_AT_CNUM)) {
+    APPL_TRACE_WARNING("%s: remote may not return, skipping %d command",
+                       __func__, cmd);
+    bta_hf_client_handle_ok(client_cb);
+    return;
+  }
+#endif
+
     /* Generate fake responses for these because they won't reliably work */
     if (!service_availability &&
         (cmd == BTA_HF_CLIENT_AT_CNUM || cmd == BTA_HF_CLIENT_AT_COPS)) {
@@ -1715,6 +1742,11 @@ void bta_hf_client_send_at_chld(tBTA_HF_CLIENT_CB* client_cb, char cmd,
   }
 
   bta_hf_client_send_at(client_cb, BTA_HF_CLIENT_AT_CHLD, buf, at_len);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  if ((interop_match_addr(INTEROP_SLC_STATE_CHLD_SEND, &client_cb->peer_addr) == true)) {
+    bta_hf_client_sco_event_ex(client_cb, 0); //BTA_HF_CLIENT_SCO_LISTEN_E
+  }
+#endif
 }
 
 void bta_hf_client_send_at_clip(tBTA_HF_CLIENT_CB* client_cb, bool activate) {

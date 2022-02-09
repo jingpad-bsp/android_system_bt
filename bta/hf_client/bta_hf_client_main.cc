@@ -30,6 +30,9 @@
 #include "osi/include/osi.h"
 #include "osi/include/properties.h"
 #include "utl.h"
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#include "device/include/interop.h"
+#endif
 
 static const char* bta_hf_client_evt_str(uint16_t event);
 static const char* bta_hf_client_state_str(uint8_t state);
@@ -779,6 +782,19 @@ static void send_post_slc_cmd(tBTA_HF_CLIENT_CB* client_cb) {
   bta_hf_client_send_at_clip(client_cb, true);
 }
 
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+static void send_post_slc_cmd_ex(tBTA_HF_CLIENT_CB* client_cb) {
+  client_cb->at_cb.current_cmd = BTA_HF_CLIENT_AT_NONE;
+
+  bta_hf_client_send_at_bia(client_cb);
+  bta_hf_client_send_at_ccwa(client_cb, true);
+  bta_hf_client_send_at_cmee(client_cb, true);
+  bta_hf_client_send_at_cops(client_cb, false);
+  bta_hf_client_send_at_btrh(client_cb, true, 0);
+  bta_hf_client_send_at_clip(client_cb, true);
+}
+#endif
+
 /*******************************************************************************
  *
  * Function         bta_hf_client_slc_seq
@@ -854,7 +870,16 @@ void bta_hf_client_slc_seq(tBTA_HF_CLIENT_CB* client_cb, bool error) {
       tBTA_HF_CLIENT_DATA msg;
       msg.hdr.layer_specific = client_cb->handle;
       bta_hf_client_svc_conn_open(&msg);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+      if ((interop_match_addr(INTEROP_SLC_STATE_CHLD_SEND,
+           &client_cb->peer_addr) == true)) {
+        send_post_slc_cmd_ex(client_cb);
+      } else {
+        send_post_slc_cmd(client_cb);
+      }
+#else
       send_post_slc_cmd(client_cb);
+#endif
       break;
     }
 
@@ -864,10 +889,17 @@ void bta_hf_client_slc_seq(tBTA_HF_CLIENT_CB* client_cb, bool error) {
           "HFPClient: Failed to create SLCdue to unexpected AT command, "
           "disconnecting (%u)",
           client_cb->at_cb.current_cmd);
-
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+      if (client_cb->at_cb.current_cmd != BTA_HF_CLIENT_AT_NREC) {
+        tBTA_HF_CLIENT_DATA msg;
+        msg.hdr.layer_specific = client_cb->handle;
+        bta_hf_client_sm_execute(BTA_HF_CLIENT_API_CLOSE_EVT, &msg);
+      }
+#else
       tBTA_HF_CLIENT_DATA msg;
       msg.hdr.layer_specific = client_cb->handle;
       bta_hf_client_sm_execute(BTA_HF_CLIENT_API_CLOSE_EVT, &msg);
+#endif
       break;
     }
   }

@@ -40,6 +40,10 @@
 #include "l2cdefs.h"
 #include "utl.h"
 
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#include "btdevice.h"
+#endif
+
 #if (BTA_AR_INCLUDED == TRUE)
 #include "bta_ar_api.h"
 #endif
@@ -219,7 +223,11 @@ static const char* bta_av_st_code(uint8_t state);
  ******************************************************************************/
 static void bta_av_api_enable(tBTA_AV_DATA* p_data) {
   /* initialize control block */
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  //memset(&bta_av_cb, 0, sizeof(tBTA_AV_CB));
+#else
   memset(&bta_av_cb, 0, sizeof(tBTA_AV_CB));
+#endif
 
   for (int i = 0; i < BTA_AV_NUM_RCB; i++)
     bta_av_cb.rcb[i].handle = BTA_AV_RC_HANDLE_NONE;
@@ -233,9 +241,23 @@ static void bta_av_api_enable(tBTA_AV_DATA* p_data) {
   bta_av_cb.link_signalling_timer = alarm_new("bta_av.link_signalling_timer");
   bta_av_cb.accept_signalling_timer =
       alarm_new("bta_av.accept_signalling_timer");
-
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  if (p_data->api_enable.features & BTA_AV_FEAT_SINK_APP) {
+        bta_av_cb.p_sink_cback = p_data->api_enable.p_cback;
+  } else {
+     bta_av_cb.p_cback = p_data->api_enable.p_cback;
+  }
+  APPL_TRACE_DEBUG("%s features 0x%x p_sink_cback %p, p_cback %p", __func__,
+                   p_data->api_enable.features, bta_av_cb.p_sink_cback, bta_av_cb.p_cback);
+#else
   /* store parameters */
   bta_av_cb.p_cback = p_data->api_enable.p_cback;
+#endif
+#else
+  /* store parameters */
+  bta_av_cb.p_cback = p_data->api_enable.p_cback;
+#endif
   bta_av_cb.features = p_data->api_enable.features;
   bta_av_cb.sec_mask = p_data->api_enable.sec_mask;
 
@@ -250,7 +272,19 @@ static void bta_av_api_enable(tBTA_AV_DATA* p_data) {
   /* call callback with enable event */
   tBTA_AV bta_av_data;
   bta_av_data.enable = enable;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  if (p_data->api_enable.features & BTA_AV_FEAT_SINK_APP && bta_av_cb.p_sink_cback) {
+    (*bta_av_cb.p_sink_cback)(BTA_AV_ENABLE_EVT, &bta_av_data);
+  } else if(bta_av_cb.p_cback) {
+    (*bta_av_cb.p_cback)(BTA_AV_ENABLE_EVT, &bta_av_data);
+  }
+#else
   (*bta_av_cb.p_cback)(BTA_AV_ENABLE_EVT, &bta_av_data);
+#endif
+#else
+  (*bta_av_cb.p_cback)(BTA_AV_ENABLE_EVT, &bta_av_data);
+#endif
 }
 
 /*******************************************************************************
@@ -285,6 +319,32 @@ int BTA_AvObtainPeerChannelIndex(const RawAddress& peer_address) {
   }
 
   // Find the index for an entry that is not used
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+  uint8_t tsep = btdevice_get_device_type(&peer_address);
+  if (tsep == AVDT_TSEP_SRC) {
+    //device type is SOURCE, loop down
+    for (int index = BTA_AV_NUM_STRS - 1; index >= 0; index--) {
+      tBTA_AV_SCB* p_scb = bta_av_cb.p_scb[index];
+      if (p_scb == nullptr) {
+        continue;
+      }
+      if (p_scb->PeerAddress().IsEmpty()) {
+        return p_scb->hdi;
+      }
+    }
+  } else {
+    //device type is SINK, loop up
+    for (int index = 0; index < BTA_AV_NUM_STRS; index++) {
+      tBTA_AV_SCB* p_scb = bta_av_cb.p_scb[index];
+      if (p_scb == nullptr) {
+        continue;
+      }
+      if (p_scb->PeerAddress().IsEmpty()) {
+        return p_scb->hdi;
+      }
+    }
+  }
+#else
   for (int index = 0; index < BTA_AV_NUM_STRS; index++) {
     tBTA_AV_SCB* p_scb = bta_av_cb.p_scb[index];
     if (p_scb == nullptr) {
@@ -294,6 +354,7 @@ int BTA_AvObtainPeerChannelIndex(const RawAddress& peer_address) {
       return p_scb->hdi;
     }
   }
+#endif
 
   return -1;
 }
@@ -413,6 +474,16 @@ void bta_av_conn_cback(UNUSED_ATTR uint8_t handle, const RawAddress& bd_addr,
   if (event == AVDT_CONNECT_IND_EVT || event == AVDT_DISCONNECT_IND_EVT)
 #endif
   {
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    if (btdevice_get_current_tsep() == AVDT_TSEP_INVALID) {
+      uint8_t tsep = btdevice_get_device_type(&bd_addr);
+      if (tsep == AVDT_TSEP_SRC) tsep = AVDT_TSEP_SNK;
+      else if (tsep == AVDT_TSEP_SNK) tsep =AVDT_TSEP_SRC;
+      btdevice_set_current_tsep(tsep);
+    }
+#endif
+#endif
     evt = BTA_AV_SIG_CHG_EVT;
     if (event == AVDT_DISCONNECT_IND_EVT) {
       p_scb = bta_av_addr_to_scb(bd_addr);
@@ -512,6 +583,14 @@ static void bta_av_api_register(tBTA_AV_DATA* p_data) {
 
     registr.hndl = p_scb->hndl;
     p_scb->app_id = registr.app_id;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    if (profile_initialized == UUID_SERVCLASS_AUDIO_SOURCE)
+      p_scb->tsep = AVDT_TSEP_SRC;
+    else
+      p_scb->tsep = AVDT_TSEP_SNK;
+#endif
+#endif
 
     /* initialize the stream control block */
     registr.status = BTA_AV_SUCCESS;
@@ -663,6 +742,34 @@ static void bta_av_api_register(tBTA_AV_DATA* p_data) {
     if (!bta_av_cb.reg_audio) {
       bta_av_cb.sdp_a2dp_handle = 0;
       bta_av_cb.sdp_a2dp_snk_handle = 0;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifndef HOST_DEVICE_COEXISTENCE
+      if (profile_initialized == UUID_SERVCLASS_AUDIO_SOURCE)
+#endif
+      {
+        /* create the SDP records on the 1st audio channel */
+        bta_av_cb.sdp_a2dp_handle = SDP_CreateRecord();
+        A2DP_AddRecord(UUID_SERVCLASS_AUDIO_SOURCE, p_service_name, NULL,
+                       A2DP_SUPF_PLAYER, bta_av_cb.sdp_a2dp_handle);
+        bta_sys_add_uuid(UUID_SERVCLASS_AUDIO_SOURCE);
+      }
+#ifndef HOST_DEVICE_COEXISTENCE
+      else if (profile_initialized == UUID_SERVCLASS_AUDIO_SINK)
+#endif
+      {
+#if (BTA_AV_SINK_INCLUDED == TRUE)
+        bta_av_cb.sdp_a2dp_snk_handle = SDP_CreateRecord();
+        A2DP_AddRecord(UUID_SERVCLASS_AUDIO_SINK, p_service_name, NULL,
+                       A2DP_SUPF_PLAYER, bta_av_cb.sdp_a2dp_snk_handle);
+        bta_sys_add_uuid(UUID_SERVCLASS_AUDIO_SINK);
+#endif
+      }
+      /* start listening when A2DP is registered */
+#ifndef HOST_DEVICE_COEXISTENCE
+      if (bta_av_cb.features & BTA_AV_FEAT_RCTG)
+        bta_av_rc_create(&bta_av_cb, AVCT_ACP, 0, BTA_AV_NUM_LINKS + 1);
+#endif
+#else
       if (profile_initialized == UUID_SERVCLASS_AUDIO_SOURCE) {
         /* create the SDP records on the 1st audio channel */
         bta_av_cb.sdp_a2dp_handle = SDP_CreateRecord();
@@ -680,6 +787,7 @@ static void bta_av_api_register(tBTA_AV_DATA* p_data) {
       /* start listening when A2DP is registered */
       if (bta_av_cb.features & BTA_AV_FEAT_RCTG)
         bta_av_rc_create(&bta_av_cb, AVCT_ACP, 0, BTA_AV_NUM_LINKS + 1);
+#endif
 
       /* if the AV and AVK are both supported, it cannot support the CT role
        */
@@ -696,7 +804,13 @@ static void bta_av_api_register(tBTA_AV_DATA* p_data) {
                           BTA_ID_AV);
 #endif
 #endif
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifndef HOST_DEVICE_COEXISTENCE
           bta_av_rc_create(&bta_av_cb, AVCT_ACP, 0, BTA_AV_NUM_LINKS + 1);
+#endif
+#else
+          bta_av_rc_create(&bta_av_cb, AVCT_ACP, 0, BTA_AV_NUM_LINKS + 1);
+#endif
         }
 #if (BTA_AR_INCLUDED == TRUE)
         /* create an SDP record as AVRC CT. We create 1.3 for SOURCE
@@ -719,6 +833,12 @@ static void bta_av_api_register(tBTA_AV_DATA* p_data) {
 #endif
       }
     }
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    if (bta_av_cb.features & (BTA_AV_FEAT_RCCT))
+      bta_av_rc_create(&bta_av_cb, AVCT_ACP, 0, BTA_AV_NUM_LINKS + 1);
+#endif
+#endif
     bta_av_cb.reg_audio |= BTA_AV_HNDL_TO_MSK(p_scb->hdi);
     APPL_TRACE_DEBUG("%s: reg_audio: 0x%x", __func__, bta_av_cb.reg_audio);
   } while (0);
@@ -726,7 +846,19 @@ static void bta_av_api_register(tBTA_AV_DATA* p_data) {
   /* call callback with register event */
   tBTA_AV bta_av_data;
   bta_av_data.registr = registr;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  if (profile_initialized == UUID_SERVCLASS_AUDIO_SOURCE) {
+    (*bta_av_cb.p_cback)(BTA_AV_REGISTER_EVT, &bta_av_data);
+  } else {
+    (*bta_av_cb.p_sink_cback)(BTA_AV_REGISTER_EVT, &bta_av_data);
+  }
+#else
   (*bta_av_cb.p_cback)(BTA_AV_REGISTER_EVT, &bta_av_data);
+#endif
+#else
+  (*bta_av_cb.p_cback)(BTA_AV_REGISTER_EVT, &bta_av_data);
+#endif
 }
 
 /*******************************************************************************

@@ -236,7 +236,11 @@ static void btif_a2dp_source_end_session_delayed(
 static void btif_a2dp_source_shutdown_delayed(void);
 static void btif_a2dp_source_cleanup_delayed(void);
 static void btif_a2dp_source_audio_tx_start_event(void);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+void btif_a2dp_source_audio_tx_stop_event(void);
+#else
 static void btif_a2dp_source_audio_tx_stop_event(void);
+#endif
 static void btif_a2dp_source_audio_tx_flush_event(void);
 // Set up the A2DP Source codec, and prepare the encoder.
 // The peer address is |peer_addr|.
@@ -356,6 +360,8 @@ static void btif_a2dp_source_startup_delayed() {
   if (!btif_a2dp_source_thread.EnableRealTimeScheduling()) {
     LOG(FATAL) << __func__ << ": unable to enable real time scheduling";
   }
+
+  //bluetooth::audio::a2dp begin init
   if (!bluetooth::audio::a2dp::init(&btif_a2dp_source_thread)) {
     if (btif_av_is_a2dp_offload_enabled()) {
       LOG(WARNING) << __func__ << ": Using BluetoothA2dp HAL";
@@ -396,6 +402,7 @@ static void btif_a2dp_source_start_session_delayed(
     return;
   }
   if (bluetooth::audio::a2dp::is_hal_2_0_enabled()) {
+  	//quan bluetooth::audio::a2dp::start_session -- 
     bluetooth::audio::a2dp::start_session();
     BluetoothMetricsLogger::GetInstance()->LogBluetoothSessionStart(
         bluetooth::common::CONNECTION_TECHNOLOGY_TYPE_BREDR, 0);
@@ -567,12 +574,19 @@ static void btif_a2dp_source_setup_codec_delayed(
 
   tA2DP_ENCODER_INIT_PEER_PARAMS peer_params;
   bta_av_co_get_peer_params(peer_address, &peer_params);
-
+  
+  LOG_ERROR(LOG_TAG, "%s: bta_av_co_set_active_peer begin %s",
+			   __func__, peer_address.ToString().c_str());
+  
   if (!bta_av_co_set_active_peer(peer_address)) {
     LOG_ERROR(LOG_TAG, "%s: Cannot stream audio: cannot set active peer to %s",
               __func__, peer_address.ToString().c_str());
     return;
   }
+
+    LOG_ERROR(LOG_TAG, "%s: bta_av_co_get_encoder_interface begin %s",
+			   __func__, peer_address.ToString().c_str());
+  
   btif_a2dp_source_cb.encoder_interface = bta_av_co_get_encoder_interface();
   if (btif_a2dp_source_cb.encoder_interface == nullptr) {
     LOG_ERROR(LOG_TAG, "%s: Cannot stream audio: no source encoder interface",
@@ -781,7 +795,11 @@ static void btif_a2dp_source_audio_tx_start_event(void) {
   }
 }
 
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+void btif_a2dp_source_audio_tx_stop_event(void) {
+#else
 static void btif_a2dp_source_audio_tx_stop_event(void) {
+#endif
   LOG_INFO(LOG_TAG, "%s: media_alarm is %srunning, streaming %s state=%s",
            __func__,
            btif_a2dp_source_cb.media_alarm.IsScheduled() ? "" : "not ",

@@ -20,6 +20,7 @@ cc_defaults {
         "system/bt/stack/btm",
         "system/bt/udrv/include",
         "system/bt/vnd/include",
+        "system/bt/vnd_unisoc/include",
         "system/bt/utils/include",
     ],
     shared_libs: [

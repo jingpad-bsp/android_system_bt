@@ -17,14 +17,15 @@
 
 #include <base/message_loop/message_loop.h>
 
+#include <sys/select.h>
 #include "connection_handler.h"
 #include "packet/avrcp/avrcp_reject_packet.h"
 #include "packet/avrcp/general_reject_packet.h"
 #include "packet/avrcp/get_play_status_packet.h"
-#include "packet/avrcp/pass_through_packet.h"
 #include "packet/avrcp/set_absolute_volume.h"
 #include "packet/avrcp/set_addressed_player.h"
 #include "stack_config.h"
+#include "device/include/interop.h"
 
 namespace bluetooth {
 namespace avrcp {
@@ -170,6 +171,22 @@ void Device::VendorPacketHandler(uint8_t label,
       media_interface_->GetMediaPlayerList(base::Bind(&Device::HandleSetAddressedPlayer, weak_ptr_factory_.GetWeakPtr(),
                                                       label, set_addressed_player_request));
     } break;
+
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+    case CommandPdu::LIST_APPLICATION_SETTING_ATTRIBUTES: {
+      // some devices reconnected devices will send play key.
+      // if a2dp not in connected status, music will from phone some time
+      // in this case, we need add some delay for A2dp connect.
+      // more implementation should uplayer.
+      if ((interop_match_addr(INTEROP_ARVCP_REJ_DEALY, &address_) == true)) {
+        DEVICE_LOG(ERROR) << "CommandPdu list setting attributes, delay some time.";
+        sleep(2);
+      }
+      auto response = RejectBuilder::MakeBuilder(
+          (CommandPdu)pkt->GetCommandPdu(), Status::INVALID_COMMAND);
+      send_message(label, false, std::move(response));
+    } break;
+#endif
 
     default: {
       DEVICE_LOG(ERROR) << "Unhandled Vendor Packet: " << pkt->ToString();
@@ -644,6 +661,11 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
       // TODO (apanicke): Use an enum for media key ID's
       if (pass_through_packet->GetOperationId() == 0x44 &&
           pass_through_packet->GetKeyState() == KeyState::PUSHED) {
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+        std::lock_guard<std::mutex> lock(pending_key_event_mutex_);
+        pending_key_events_.push(pass_through_packet);
+#endif
+
         // We need to get the play status since we need to know
         // what the actual playstate is without being modified
         // by whether the device is active.
@@ -651,6 +673,49 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
             [](base::WeakPtr<Device> d, PlayStatus s) {
               if (!d) return;
 
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+              std::lock_guard<std::mutex> lock(d->pending_key_event_mutex_);
+              bool skip_first_event = false;
+
+              if (!d->IsActive()) {
+                LOG(INFO) << "Setting " << d->address_.ToString()
+                          << " to be the active device";
+                d->media_interface_->SetActiveDevice(d->address_);
+
+                if (s.state == PlayState::PLAYING) {
+                  LOG(INFO)
+                      << "Skipping sendKeyEvent since music is already playing";
+                  skip_first_event = true;
+                }
+              }
+
+              if (!skip_first_event) {
+                d->media_interface_->SendKeyEvent(
+                    d->pending_key_events_.front()->GetOperationId(),
+                    d->pending_key_events_.front()->GetKeyState());
+              }
+              d->pending_key_events_.pop();
+              if (d->pending_key_events_.empty()) return;
+
+              // send all queue elements, but stop if we meet key event
+              // PLAY PUSHED that should be handled by next cb
+              LOG(INFO) << "Sending key events from queue, size="
+                        << d->pending_key_events_.size();
+              while (!d->pending_key_events_.empty()) {
+                if (d->pending_key_events_.front()->GetOperationId() == 0x44 &&
+                    d->pending_key_events_.front()->GetKeyState() ==
+                        KeyState::PUSHED)
+                  break;
+
+                d->media_interface_->SendKeyEvent(
+                    d->pending_key_events_.front()->GetOperationId(),
+                    d->pending_key_events_.front()->GetKeyState());
+
+                d->pending_key_events_.pop();
+              }
+
+            },
+#else
               if (!d->IsActive()) {
                 LOG(INFO) << "Setting " << d->address_.ToString()
                           << " to be the active device";
@@ -665,13 +730,25 @@ void Device::MessageReceived(uint8_t label, std::shared_ptr<Packet> pkt) {
 
               d->media_interface_->SendKeyEvent(0x44, KeyState::PUSHED);
             },
+#endif
             weak_ptr_factory_.GetWeakPtr()));
         return;
       }
 
       if (IsActive()) {
+#if (defined(SPRD_FEATURE_AOBFIX) && SPRD_FEATURE_AOBFIX == TRUE)
+        std::lock_guard<std::mutex> lock(pending_key_event_mutex_);
+        if (!pending_key_events_.empty()) {
+          LOG(WARNING) << "Key event handling is in progress, put in the queue";
+          pending_key_events_.push(pass_through_packet);
+        } else {
+          media_interface_->SendKeyEvent(pass_through_packet->GetOperationId(),
+                                         pass_through_packet->GetKeyState());
+        }
+#else
         media_interface_->SendKeyEvent(pass_through_packet->GetOperationId(),
                                        pass_through_packet->GetKeyState());
+#endif
       }
     } break;
     case Opcode::VENDOR: {

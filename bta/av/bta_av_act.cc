@@ -45,6 +45,9 @@
 #if (BTA_AR_INCLUDED == TRUE)
 #include "bta_ar_api.h"
 #endif
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#include "btdevice.h"
+#endif
 
 /*****************************************************************************
  *  Constants
@@ -575,7 +578,21 @@ void bta_av_rc_opened(tBTA_AV_CB* p_cb, tBTA_AV_DATA* p_data) {
   }
   tBTA_AV bta_av_data;
   bta_av_data.rc_open = rc_open;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  p_scb = bta_av_hndl_to_scb(shdl);
+
+  if ((p_scb != NULL && p_scb->tsep == AVDT_TSEP_SRC) ||
+     (p_scb == NULL && btdevice_get_current_tsep() == AVDT_TSEP_SRC))
+    (*p_cb->p_cback)(BTA_AV_RC_OPEN_EVT, &bta_av_data);
+  else
+    (*p_cb->p_sink_cback)(BTA_AV_RC_OPEN_EVT, &bta_av_data);
+#else
   (*p_cb->p_cback)(BTA_AV_RC_OPEN_EVT, &bta_av_data);
+#endif
+#else
+  (*p_cb->p_cback)(BTA_AV_RC_OPEN_EVT, &bta_av_data);
+#endif
 
   /* if local initiated AVRCP connection and both peer and locals device support
    * browsing channel, open the browsing channel now
@@ -1003,7 +1020,18 @@ void bta_av_rc_msg(tBTA_AV_CB* p_cb, tBTA_AV_DATA* p_data) {
   /* call callback */
   if (evt != 0) {
     av.remote_cmd.rc_handle = p_data->rc_msg.handle;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    if (btdevice_get_current_tsep() == AVDT_TSEP_SRC)
+      (*p_cb->p_cback)(evt, &av);
+    else
+      (*p_cb->p_sink_cback)(evt, &av);
+#else
     (*p_cb->p_cback)(evt, &av);
+#endif
+#else
+    (*p_cb->p_cback)(evt, &av);
+#endif
     /* If browsing message, then free the browse message buffer */
     bta_av_rc_free_browse_msg(p_cb, p_data);
   }
@@ -1380,7 +1408,11 @@ static uint8_t bta_av_find_lcb_index_by_scb_and_address(
     if (p_scb == nullptr) {
       continue;
     }
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+    if (!p_scb->IsAssigned() && p_scb->tsep == btdevice_get_current_tsep()) {
+#else
     if (!p_scb->IsAssigned()) {
+#endif
       return index;
     }
   }
@@ -1543,7 +1575,18 @@ void bta_av_signalling_timer(UNUSED_ATTR tBTA_AV_DATA* p_data) {
             "%s: BTA_AV_PENDING_EVT for %s index=%d conn_mask=0x%x lidx=%d",
             __func__, pend.bd_addr.ToString().c_str(), xx, p_lcb->conn_msk,
             p_lcb->lidx);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+        if (btdevice_get_current_tsep() == AVDT_TSEP_SRC)
+          (*p_cb->p_cback)(BTA_AV_PENDING_EVT, &bta_av_data);
+        else
+          (*p_cb->p_sink_cback)(BTA_AV_PENDING_EVT, &bta_av_data);
+#else
         (*p_cb->p_cback)(BTA_AV_PENDING_EVT, &bta_av_data);
+#endif
+#else
+        (*p_cb->p_cback)(BTA_AV_PENDING_EVT, &bta_av_data);
+#endif
       }
     }
   }
@@ -1848,7 +1891,14 @@ void bta_av_rc_disc_done(UNUSED_ATTR tBTA_AV_DATA* p_data) {
         if (p_lcb) {
           rc_handle = bta_av_rc_create(p_cb, AVCT_INT,
                                        (uint8_t)(p_scb->hdi + 1), p_lcb->lidx);
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+          if (rc_handle < BTA_AV_NUM_RCB)
+            p_cb->rcb[rc_handle].peer_features = peer_features;
+          else
+            APPL_TRACE_ERROR("%s: invalid rc_handle %d !!", __func__, rc_handle);
+#else
           p_cb->rcb[rc_handle].peer_features = peer_features;
+#endif
         } else {
           APPL_TRACE_ERROR("%s: can not find LCB!!", __func__);
         }
@@ -1861,7 +1911,18 @@ void bta_av_rc_disc_done(UNUSED_ATTR tBTA_AV_DATA* p_data) {
         rc_open.status = BTA_AV_FAIL_SDP;
         tBTA_AV bta_av_data;
         bta_av_data.rc_open = rc_open;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+        if (btdevice_get_current_tsep() == AVDT_TSEP_SRC)
+          (*p_cb->p_cback)(BTA_AV_RC_FEAT_EVT, &bta_av_data);
+        else
+          (*p_cb->p_sink_cback)(BTA_AV_RC_FEAT_EVT, &bta_av_data);
+#else
         (*p_cb->p_cback)(BTA_AV_RC_OPEN_EVT, &bta_av_data);
+#endif
+#else
+        (*p_cb->p_cback)(BTA_AV_RC_OPEN_EVT, &bta_av_data);
+#endif
       }
     }
   } else {
@@ -1881,7 +1942,18 @@ void bta_av_rc_disc_done(UNUSED_ATTR tBTA_AV_DATA* p_data) {
     }
     tBTA_AV bta_av_data;
     bta_av_data.rc_feat = rc_feat;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+    if (btdevice_get_current_tsep() == AVDT_TSEP_SRC)
+      (*p_cb->p_cback)(BTA_AV_RC_FEAT_EVT, &bta_av_data);
+    else
+      (*p_cb->p_sink_cback)(BTA_AV_RC_FEAT_EVT, &bta_av_data);
+#else
     (*p_cb->p_cback)(BTA_AV_RC_FEAT_EVT, &bta_av_data);
+#endif
+#else
+    (*p_cb->p_cback)(BTA_AV_RC_FEAT_EVT, &bta_av_data);
+#endif
   }
 }
 
@@ -1966,7 +2038,18 @@ void bta_av_rc_closed(tBTA_AV_DATA* p_data) {
   }
   tBTA_AV bta_av_data;
   bta_av_data.rc_close = rc_close;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  if (btdevice_get_current_tsep() == AVDT_TSEP_SRC)
+    (*p_cb->p_cback)(BTA_AV_RC_CLOSE_EVT, &bta_av_data);
+  else
+    (*p_cb->p_sink_cback)(BTA_AV_RC_CLOSE_EVT, &bta_av_data);
+#else
   (*p_cb->p_cback)(BTA_AV_RC_CLOSE_EVT, &bta_av_data);
+#endif
+#else
+  (*p_cb->p_cback)(BTA_AV_RC_CLOSE_EVT, &bta_av_data);
+#endif
   if (bta_av_cb.rc_acp_handle == BTA_AV_RC_HANDLE_NONE
                   && bta_av_cb.features & BTA_AV_FEAT_RCTG)
       bta_av_rc_create(&bta_av_cb, AVCT_ACP, 0, BTA_AV_NUM_LINKS + 1);
@@ -1995,7 +2078,18 @@ void bta_av_rc_browse_opened(tBTA_AV_DATA* p_data) {
 
   tBTA_AV bta_av_data;
   bta_av_data.rc_browse_open = rc_browse_open;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  if (btdevice_get_current_tsep() == AVDT_TSEP_SRC)
+    (*p_cb->p_cback)(BTA_AV_RC_BROWSE_OPEN_EVT, &bta_av_data);
+  else
+    (*p_cb->p_sink_cback)(BTA_AV_RC_BROWSE_OPEN_EVT, &bta_av_data);
+#else
   (*p_cb->p_cback)(BTA_AV_RC_BROWSE_OPEN_EVT, &bta_av_data);
+#endif
+#else
+  (*p_cb->p_cback)(BTA_AV_RC_BROWSE_OPEN_EVT, &bta_av_data);
+#endif
 }
 
 /*******************************************************************************
@@ -2020,7 +2114,18 @@ void bta_av_rc_browse_closed(tBTA_AV_DATA* p_data) {
 
   tBTA_AV bta_av_data;
   bta_av_data.rc_browse_close = rc_browse_close;
+#if (defined(SPRD_FEATURE_CARKIT) && SPRD_FEATURE_CARKIT == TRUE)
+#ifdef HOST_DEVICE_COEXISTENCE
+  if (btdevice_get_current_tsep() == AVDT_TSEP_SRC)
+    (*p_cb->p_cback)(BTA_AV_RC_BROWSE_CLOSE_EVT, &bta_av_data);
+  else
+    (*p_cb->p_sink_cback)(BTA_AV_RC_BROWSE_CLOSE_EVT, &bta_av_data);
+#else
   (*p_cb->p_cback)(BTA_AV_RC_BROWSE_CLOSE_EVT, &bta_av_data);
+#endif
+#else
+  (*p_cb->p_cback)(BTA_AV_RC_BROWSE_CLOSE_EVT, &bta_av_data);
+#endif
 }
 
 /*******************************************************************************

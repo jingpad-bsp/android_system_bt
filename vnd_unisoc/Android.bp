@@ -1,0 +1,65 @@
+cc_defaults {
+    name: "libbt-vnd-unisoc_defaults",
+    defaults: ["fluoride_defaults"],
+    shared_libs: [
+        "android.hardware.bluetooth@1.0",
+        "libhidlbase",
+        "libhidltransport",
+        "libhwbinder",
+    ],
+}
+
+//libbtdevice_unisoc static library for target
+// ========================================================
+cc_library_static {
+    name: "libbtdevice_unisoc",
+    defaults: ["libbt-vnd-unisoc_defaults"],
+    srcs: [
+       "src/btdevice.cc",
+    ],
+    local_include_dirs: [
+        "include",
+    ],
+    include_dirs: [
+        "system/bt",
+        "system/bt/internal_include",
+        "system/bt/btcore/include",
+        "system/bt/stack/include",
+        "system/bt/stack/sdp",
+        "system/bt/utils/include",
+        "system/bt/btif/include",
+        "system/bt/bta/include",
+        "system/libhwbinder/include",
+    ],
+
+    shared_libs: [
+        "android.hardware.bluetooth@1.0",
+        "android.hardware.bluetooth.a2dp@1.0",
+        "android.hardware.bluetooth.audio@2.0",
+        "libaudioclient",
+        "libcutils",
+        "libdl",
+        "libfmq",
+        "libhidlbase",
+        "libhidltransport",
+        "libhwbinder",
+        "liblog",
+        "libprocessgroup",
+        "libprotobuf-cpp-lite",
+        "libutils",
+        "libtinyxml2",
+        "libz",
+        "libcrypto",
+        "android.hardware.keymaster@4.0",
+        "android.hardware.keymaster@3.0",
+        "libkeymaster4support",
+        "libkeystore_aidl",
+        "libkeystore_binder",
+        "libkeystore_parcelables",
+    ],
+    static_libs: [
+    ],
+    whole_static_libs: [
+    ],
+
+}
